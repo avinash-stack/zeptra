@@ -39,7 +39,7 @@ const UserManagement: React.FC = () => {
   }, []);
 
   const fetchUsers = async () => {
-    const { data: profiles } = await supabase.from('profiles').select('*').order('name');
+    const { data: profiles } = await supabase.from('users').select('*').order('name');
     const { data: roles } = await supabase.from('user_roles').select('*');
 
     if (profiles) {
@@ -92,7 +92,7 @@ const UserManagement: React.FC = () => {
 
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    const { error } = await supabase.from('profiles').update({ status: newStatus }).eq('id', userId);
+    const { error } = await supabase.from('users').update({ status: newStatus }).eq('id', userId);
     if (error) {
       toast.error('Failed to update user status');
     } else {
@@ -111,7 +111,7 @@ const UserManagement: React.FC = () => {
   };
 
   const updateUserManager = async (userId: string, managerId: string) => {
-    await supabase.from('profiles').update({ manager_id: managerId || null }).eq('id', userId);
+    await supabase.from('users').update({ manager_id: managerId || null }).eq('id', userId);
     toast.success('Manager updated');
     fetchUsers();
     setEditUser(null);

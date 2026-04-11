@@ -72,7 +72,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
-            <Route path="/create-organization" element={<AuthRoute><OrganizationProfile /></AuthRoute>} />
+            <Route path="/create-organization" element={<OrganizationProfile />} />
             <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
             <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />

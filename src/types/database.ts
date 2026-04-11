@@ -3,7 +3,7 @@
 // ============================================================
 
 // Roles — 'manager' removed; manager access is determined by
-// the profiles.manager_id relationship
+// the users.manager_id relationship
 export type AppRole = 'admin' | 'employee' | 'hr' | 'finance';
 export type ExpenseStatus = 'pending_l1' | 'pending_l2' | 'approved' | 'rejected';
 export type ApprovalAction = 'approved' | 'rejected' | 'reassigned';
@@ -25,13 +25,13 @@ export interface Organization {
 export interface OrgCurrency {
   id: string;
   org_id: string;
-  code: string;   // e.g. 'USD'
-  symbol: string;  // e.g. '$'
-  name: string;    // e.g. 'US Dollar'
+  code: string;
+  symbol: string;
+  name: string;
   is_default: boolean;
 }
 
-// ---- Users ----
+// ---- Users (table: public.users) ----
 
 export interface Profile {
   id: string;
@@ -96,6 +96,6 @@ export interface ApprovalHistory {
 // ---- Joined / Extended ----
 
 export interface ExpenseWithDetails extends Expense {
-  profiles?: Profile;
+  users?: Profile;
   expense_categories?: ExpenseCategory;
 }

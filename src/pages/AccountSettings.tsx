@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -11,10 +11,19 @@ import { Loader2, User, Mail, Building2, Phone, Lock } from 'lucide-react';
 const AccountSettings: React.FC = () => {
   const { profile, refreshProfile, user } = useAuth();
 
-  const [firstName, setFirstName] = useState(profile?.first_name || '');
-  const [lastName, setLastName] = useState(profile?.last_name || '');
-  const [phone, setPhone] = useState(profile?.phone || '');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [phone, setPhone] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+
+  // Sync state when profile loads or updates
+  useEffect(() => {
+    if (profile) {
+      setFirstName(profile.first_name || '');
+      setLastName(profile.last_name || '');
+      setPhone(profile.phone || '');
+    }
+  }, [profile]);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -27,7 +36,7 @@ const AccountSettings: React.FC = () => {
     const fullName = `${firstName.trim()} ${lastName.trim()}`.trim() || profile?.email || '';
 
     const { error } = await supabase
-      .from('profiles')
+      .from('users')
       .update({
         name: fullName,
         first_name: firstName.trim() || null,
@@ -69,7 +78,13 @@ const AccountSettings: React.FC = () => {
     setSavingPassword(false);
   };
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

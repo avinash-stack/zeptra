@@ -21,7 +21,7 @@ const AllExpenses: React.FC = () => {
   const fetchExpenses = async () => {
     let query = supabase
       .from('expenses')
-      .select('*, profiles!expenses_user_id_fkey(name, email), expense_categories(name)')
+      .select('*, users!expenses_user_id_fkey(name, email), expense_categories(name)')
       .order('submitted_at', { ascending: false });
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
@@ -32,7 +32,7 @@ const AllExpenses: React.FC = () => {
   };
 
   const filtered = expenses.filter(e =>
-    (e as any).profiles?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (e as any).users?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -83,7 +83,7 @@ const AllExpenses: React.FC = () => {
                 </TableRow>
               ) : filtered.map(expense => (
                 <TableRow key={expense.id}>
-                  <TableCell>{(expense as any).profiles?.name || '-'}</TableCell>
+                  <TableCell>{(expense as any).users?.name || '-'}</TableCell>
                   <TableCell>{new Date(expense.submitted_at).toLocaleDateString()}</TableCell>
                   <TableCell>{(expense as any).expense_categories?.name || '-'}</TableCell>
                   <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>

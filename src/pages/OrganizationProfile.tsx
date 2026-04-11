@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 type FormErrors = Partial<Record<keyof FormState, string>>;
 
@@ -44,6 +45,7 @@ const slugify = (value: string) =>
 
 const OrganizationProfile: React.FC = () => {
   const navigate = useNavigate();
+  const { user, reloadAll } = useAuth();
   const [form, setForm] = useState<FormState>(initialForm);
   const [errors, setErrors] = useState<FormErrors>({});
   const [slugEdited, setSlugEdited] = useState(false);
@@ -125,7 +127,7 @@ const OrganizationProfile: React.FC = () => {
 
       if (signUpError) throw signUpError;
 
-      // If email confirmation is required, session may be null
+      // 2. Ensure we have a session
       if (!signUpData.session) {
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email: form.adminEmail.trim().toLowerCase(),
@@ -134,7 +136,21 @@ const OrganizationProfile: React.FC = () => {
         if (signInError) throw signInError;
       }
 
-      // 2. Create the organization via RPC (also promotes to admin + seeds categories)
+      // 3. Wait a moment for the DB trigger to complete
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // 4. Ensure user profile exists (fallback if trigger didn't fire)
+      const { error: ensureError } = await supabase.rpc("ensure_user_profile", {
+        _name: fullName,
+        _email: form.adminEmail.trim().toLowerCase(),
+        _first_name: form.firstName.trim() || null,
+        _last_name: form.lastName.trim() || null,
+      });
+      if (ensureError) {
+        console.warn("ensure_user_profile warning:", ensureError.message);
+      }
+
+      // 5. Create the organization via RPC (promotes to admin + seeds categories/currencies)
       const { data: orgId, error: orgError } = await supabase.rpc("create_organization", {
         _name: form.companyName.trim(),
         _slug: form.companySlug.trim(),
@@ -144,12 +160,18 @@ const OrganizationProfile: React.FC = () => {
 
       if (orgError) {
         console.error("create_organization RPC error:", orgError);
-        // Fallback: try promote_to_admin if create_organization doesn't exist yet
+        toast.error("Organization creation failed: " + orgError.message);
+        // Fallback: at least promote to admin
         const { error: promoteError } = await supabase.rpc("promote_to_admin");
         if (promoteError) {
           console.warn("promote_to_admin also failed:", promoteError.message);
         }
+      } else {
+        console.log("Organization created with ID:", orgId);
       }
+
+      // 5. Reload all auth context data (profile, org, roles) BEFORE navigating
+      await reloadAll();
 
       toast.success("Organization created. You are signed in as owner with full admin access.");
       navigate("/app", { replace: true });
@@ -161,7 +183,7 @@ const OrganizationProfile: React.FC = () => {
         if (message.includes("already been registered") || message.includes("already exists")) {
           message = "This email is already registered. Please use a different email or sign in.";
         } else if (message.includes("Database error")) {
-          message = "Database setup error. Please ensure the database schema has been applied (run schema.sql in Supabase SQL Editor).";
+          message = "Database setup error. Please ensure the database schema has been applied (run migration.sql in Supabase SQL Editor).";
         } else if (message.includes("signups not allowed") || message.includes("Signups not allowed")) {
           message = "Signups are disabled in your Supabase project. Enable them in Authentication → Settings.";
         }

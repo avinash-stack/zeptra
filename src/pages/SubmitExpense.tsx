@@ -74,7 +74,7 @@ const SubmitExpense: React.FC = () => {
 
       // Get manager for L1 approval
       const { data: profileData } = await supabase
-        .from('profiles')
+        .from('users')
         .select('manager_id')
         .eq('id', user.id)
         .single();
