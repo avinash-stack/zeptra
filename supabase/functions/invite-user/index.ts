@@ -5,9 +5,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-type AppRole = "admin" | "employee" | "manager" | "hr" | "finance";
+type AppRole = "admin" | "employee" | "hr" | "finance";
 
-const validRoles = new Set<AppRole>(["admin", "employee", "manager", "hr", "finance"]);
+const validRoles = new Set<AppRole>(["admin", "employee", "hr", "finance"]);
 
 const json = (status: number, payload: Record<string, unknown>) =>
   new Response(JSON.stringify(payload), {
@@ -63,6 +63,17 @@ Deno.serve(async (req) => {
       return json(403, { error: "Only admin users can invite new users" });
     }
 
+    // Get the caller's org_id so the invited user joins the same org
+    const { data: callerProfile, error: callerProfileError } = await admin
+      .from("users")
+      .select("org_id")
+      .eq("id", callerId)
+      .single();
+
+    if (callerProfileError || !callerProfile?.org_id) {
+      return json(500, { error: "Could not determine your organization" });
+    }
+
     const body = await req.json().catch(() => null);
     if (!body) {
       return json(400, { error: "Invalid request payload" });
@@ -105,9 +116,10 @@ Deno.serve(async (req) => {
       return json(500, { error: "Invite succeeded but user id was not returned" });
     }
 
-    const { error: profileError } = await admin.from("profiles").upsert(
+    const { error: profileError } = await admin.from("users").upsert(
       {
         id: invitedUserId,
+        org_id: callerProfile.org_id,
         name,
         email,
         manager_id: managerId,

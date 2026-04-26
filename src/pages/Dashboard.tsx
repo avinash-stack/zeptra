@@ -3,20 +3,36 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from '@/components/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { DollarSign, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText } from 'lucide-react';
+import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import type { OrgCurrency } from '@/types/database';
 
 const COLORS = ['hsl(262, 83%, 58%)', 'hsl(38, 92%, 50%)', 'hsl(142, 71%, 45%)', 'hsl(0, 84%, 60%)'];
 
 const Dashboard: React.FC = () => {
-  const { user, hasRole, hasAnyRole, isManager } = useAuth();
+  const { user, profile, hasRole, hasAnyRole, isManager } = useAuth();
   const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, totalAmount: 0 });
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [defaultCurrSymbol, setDefaultCurrSymbol] = useState('');
 
   useEffect(() => {
     fetchStats();
   }, [user]);
+
+  useEffect(() => {
+    if (profile?.org_id) {
+      supabase
+        .from('org_currencies')
+        .select('symbol')
+        .eq('org_id', profile.org_id)
+        .eq('is_default', true)
+        .single()
+        .then(({ data }) => {
+          if (data) setDefaultCurrSymbol((data as OrgCurrency).symbol);
+        });
+    }
+  }, [profile?.org_id]);
 
   const fetchStats = async () => {
     if (!user) return;
@@ -84,8 +100,8 @@ const Dashboard: React.FC = () => {
         />
         <StatsCard
           title="Total Amount"
-          value={`$${stats.totalAmount.toLocaleString()}`}
-          icon={DollarSign}
+          value={`${defaultCurrSymbol}${stats.totalAmount.toLocaleString()}`}
+          icon={Coins}
           iconClassName="bg-gradient-to-br from-success to-success/70"
         />
         <StatsCard

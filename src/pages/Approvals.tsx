@@ -34,11 +34,27 @@ const Approvals: React.FC = () => {
     if (!user) return;
     const { data } = await supabase
       .from('expenses')
-      .select('*, users!expenses_user_id_fkey(name, email), expense_categories(name)')
+      .select('*, expense_categories(name)')
       .eq('current_approver_id', user.id)
       .in('status', ['pending_l1', 'pending_l2'])
       .order('submitted_at', { ascending: false });
-    setExpenses((data as ExpenseWithDetails[]) || []);
+
+    if (data && data.length > 0) {
+      // Enrich with submitter names from public.users
+      const userIds = [...new Set(data.map((e: any) => e.user_id))];
+      const { data: profiles } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .in('id', userIds);
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+      const enriched = data.map((e: any) => ({
+        ...e,
+        users: profileMap.get(e.user_id) || null,
+      }));
+      setExpenses(enriched as ExpenseWithDetails[]);
+    } else {
+      setExpenses([]);
+    }
     setLoading(false);
   };
 

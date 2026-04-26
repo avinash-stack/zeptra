@@ -40,7 +40,7 @@ const MyExpenses: React.FC = () => {
     setLoading(true);
     let query = supabase
       .from('expenses')
-      .select('*, users!expenses_user_id_fkey(name, email), expense_categories(name)')
+      .select('*, expense_categories(name)')
       .eq('user_id', user.id)
       .order('submitted_at', { ascending: false });
 

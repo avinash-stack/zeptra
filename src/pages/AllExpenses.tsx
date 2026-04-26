@@ -21,13 +21,29 @@ const AllExpenses: React.FC = () => {
   const fetchExpenses = async () => {
     let query = supabase
       .from('expenses')
-      .select('*, users!expenses_user_id_fkey(name, email), expense_categories(name)')
+      .select('*, expense_categories(name)')
       .order('submitted_at', { ascending: false });
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
 
     const { data } = await query;
-    setExpenses((data as ExpenseWithDetails[]) || []);
+
+    if (data && data.length > 0) {
+      // Enrich with submitter names from public.users
+      const userIds = [...new Set(data.map((e: any) => e.user_id))];
+      const { data: profiles } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .in('id', userIds);
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+      const enriched = data.map((e: any) => ({
+        ...e,
+        users: profileMap.get(e.user_id) || null,
+      }));
+      setExpenses(enriched as ExpenseWithDetails[]);
+    } else {
+      setExpenses([]);
+    }
     setLoading(false);
   };
 
