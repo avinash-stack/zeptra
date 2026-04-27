@@ -54,7 +54,7 @@ export function AppSidebar() {
           <SidebarGroupLabel className="px-4 py-3">
             <div className="flex items-center gap-3">
               <img
-                src="/zeptra-logo.svg"
+                src="/zeptra-logo.png"
                 alt="Zeptra Logo"
                 className="w-8 h-8 shrink-0 object-contain"
               />

@@ -8,14 +8,14 @@
   "theme_color": "#1E40AF",
   "icons": [
     {
-      "src": "/zeptra-logo.svg",
+      "src": "/zeptra-logo.png",
       "sizes": "192x192",
-      "type": "image/svg+xml"
+      "type": "image/png"
     },
     {
-      "src": "/zeptra-logo.svg",
+      "src": "/zeptra-logo.png",
       "sizes": "512x512",
-      "type": "image/svg+xml"
+      "type": "image/png"
     }
   ]
 }

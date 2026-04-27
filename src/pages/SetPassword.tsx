@@ -79,7 +79,7 @@ const SetPassword: React.FC = () => {
       <Card className="w-full max-w-md shadow-2xl border-0">
         <CardHeader className="text-center space-y-4">
           <div className="mx-auto w-20 h-20 rounded-2xl bg-white shadow-lg border border-border flex items-center justify-center">
-            <img src="/zeptra-logo.svg" alt="Zeptra Logo" className="w-14 h-14 object-contain" />
+            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="w-14 h-14 object-contain" />
           </div>
           <div>
             <CardTitle className="text-2xl font-bold">Create Your Password</CardTitle>
