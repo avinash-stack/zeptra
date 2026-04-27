@@ -82,7 +82,7 @@ const UserManagement: React.FC = () => {
 
     setCreatingUser(true);
     try {
-      const redirectTo = (import.meta.env.VITE_INVITE_REDIRECT_TO as string | undefined) || `${window.location.origin}/set-password`;
+      const redirectTo = `${window.location.origin}/set-password`;
       const roleToInvite = !isAdmin && newRole === 'admin' ? 'employee' : newRole;
 
       const { data, error } = await supabase.functions.invoke('invite-user', {
@@ -96,7 +96,18 @@ const UserManagement: React.FC = () => {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        // Extract actual error message from the function response
+        let detail = '';
+        try {
+          if ((error as any).context) {
+            const res = (error as any).context as Response;
+            const body = await res.json();
+            detail = body?.error || '';
+          }
+        } catch { /* ignore parse errors */ }
+        throw new Error(detail || error.message);
+      }
       if (data?.error) throw new Error(data.error);
 
       toast.success(`Invite sent to ${newEmail}. User can activate from email.`);
@@ -104,12 +115,7 @@ const UserManagement: React.FC = () => {
       resetForm();
       fetchUsers();
     } catch (error: unknown) {
-      let message = error instanceof Error ? error.message : 'Failed to send invite';
-
-      if (error instanceof Error && error.name === 'FunctionsFetchError') {
-        message = 'Could not reach the invite Edge Function. Redeploy `invite-user` and confirm its CORS/env settings are configured in Supabase.';
-      }
-
+      const message = error instanceof Error ? error.message : 'Failed to send invite';
       toast.error(message);
     } finally {
       setCreatingUser(false);
