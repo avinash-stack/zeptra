@@ -9,6 +9,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Sidebar,
@@ -52,7 +53,7 @@ export function AppSidebar() {
       <SidebarContent className="bg-sidebar">
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 py-3">
-            <div className="flex items-center gap-3">
+            <Link to="/app" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <img
                 src="/zeptra-logo.png"
                 alt="Zeptra Logo"
@@ -66,7 +67,7 @@ export function AppSidebar() {
                   )}
                 </div>
               )}
-            </div>
+            </Link>
           </SidebarGroupLabel>
         </SidebarGroup>
 

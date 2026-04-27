@@ -72,7 +72,7 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<AuthRoute><Landing /></AuthRoute>} />
             <Route path="/create-organization" element={<OrganizationProfile />} />
             <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
             <Route path="/set-password" element={<SetPassword />} />
