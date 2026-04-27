@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { toast } from 'sonner';
-import { Loader2, DollarSign, AlertTriangle } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
 const Login: React.FC = () => {
   const { signIn } = useAuth();
@@ -39,8 +39,8 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-info/10 p-4">
       <Card className="w-full max-w-md shadow-2xl border-0">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
-            <DollarSign className="w-8 h-8 text-primary-foreground" />
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-white shadow-lg border border-border flex items-center justify-center">
+            <img src="/zeptra-logo.svg" alt="Zeptra Logo" className="w-14 h-14 object-contain" />
           </div>
           <div>
             <CardTitle className="text-2xl font-bold">Zeptra</CardTitle>

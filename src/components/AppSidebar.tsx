@@ -6,7 +6,6 @@ import {
   List,
   Users,
   LogOut,
-  DollarSign,
   Settings,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
@@ -53,10 +52,12 @@ export function AppSidebar() {
       <SidebarContent className="bg-sidebar">
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 py-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-sidebar-primary flex items-center justify-center shrink-0">
-                <DollarSign className="w-4 h-4 text-sidebar-primary-foreground" />
-              </div>
+            <div className="flex items-center gap-3">
+              <img
+                src="/zeptra-logo.svg"
+                alt="Zeptra Logo"
+                className="w-8 h-8 shrink-0 object-contain"
+              />
               {!collapsed && (
                 <div className="flex flex-col min-w-0">
                   <span className="font-bold text-lg text-sidebar-foreground leading-tight">Zeptra</span>
