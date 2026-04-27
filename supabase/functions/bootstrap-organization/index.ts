@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -86,9 +87,10 @@ Deno.serve(async (req) => {
 
     const ownerId = createdUser.user.id;
 
-    const { error: profileError } = await admin.from("profiles").upsert(
+    const { error: profileError } = await admin.from("users").upsert(
       {
         id: ownerId,
+        org_id: null,
         name: fullName,
         email: adminEmail,
         status: "active",

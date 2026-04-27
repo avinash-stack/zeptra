@@ -11,6 +11,7 @@ import OrganizationProfile from "@/pages/OrganizationProfile";
 import Dashboard from "@/pages/Dashboard";
 import SubmitExpense from "@/pages/SubmitExpense";
 import MyExpenses from "@/pages/MyExpenses";
+import SetPassword from "@/pages/SetPassword";
 import Approvals from "@/pages/Approvals";
 import AllExpenses from "@/pages/AllExpenses";
 import UserManagement from "@/pages/UserManagement";
@@ -74,6 +75,7 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/create-organization" element={<OrganizationProfile />} />
             <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+            <Route path="/set-password" element={<SetPassword />} />
             <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="submit" element={<SubmitExpense />} />
@@ -89,7 +91,7 @@ const App = () => (
                 </ProtectedRoute>
               } />
               <Route path="users" element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['admin', 'hr']}>
                   <UserManagement />
                 </ProtectedRoute>
               } />

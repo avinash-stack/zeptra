@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
@@ -58,9 +59,11 @@ Deno.serve(async (req) => {
       return json(500, { error: roleFetchError.message });
     }
 
-    const isAdmin = (callerRoles || []).some((r: { role: string }) => r.role === "admin");
-    if (!isAdmin) {
-      return json(403, { error: "Only admin users can invite new users" });
+    const roleNames = (callerRoles || []).map((r: { role: string }) => r.role);
+    const isAdmin = roleNames.includes("admin");
+    const isHr = roleNames.includes("hr");
+    if (!isAdmin && !isHr) {
+      return json(403, { error: "Only admin or HR users can invite new users" });
     }
 
     // Get the caller's org_id so the invited user joins the same org
@@ -96,6 +99,10 @@ Deno.serve(async (req) => {
 
     if (!validRoles.has(role)) {
       return json(400, { error: `Invalid role: ${role}` });
+    }
+
+    if (!isAdmin && role === "admin") {
+      return json(403, { error: "Only admin users can assign the admin role" });
     }
 
     const inviteOptions: { data?: { name: string }; redirectTo?: string } = {

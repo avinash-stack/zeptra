@@ -8,9 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, Plus, Search, UserCheck, UserX } from 'lucide-react';
+import { Loader2, Mail, Pencil, Plus, Search, Trash2, UserCheck, UserX } from 'lucide-react';
 import type { Profile, AppRole } from '@/types/database';
 
 interface UserWithRoles extends Profile {
@@ -19,24 +29,34 @@ interface UserWithRoles extends Profile {
 }
 
 const UserManagement: React.FC = () => {
-  const { profile: currentProfile } = useAuth();
+  const { profile: currentProfile, roles } = useAuth();
   const [users, setUsers] = useState<UserWithRoles[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingUser, setCreatingUser] = useState(false);
+  const [actionUserId, setActionUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editUser, setEditUser] = useState<UserWithRoles | null>(null);
+  const [deleteUser, setDeleteUser] = useState<UserWithRoles | null>(null);
 
   // Create form
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<AppRole>('employee');
-  const [newManagerId, setNewManagerId] = useState('');
+  const [newManagerId, setNewManagerId] = useState('none');
   const [newTag, setNewTag] = useState('');
 
   useEffect(() => {
     fetchUsers();
   }, []);
+
+  const isAdmin = roles.includes('admin');
+  const isHr = roles.includes('hr');
+  const canInviteUsers = isAdmin || isHr;
+  const canToggleUsers = isAdmin || isHr;
+  const canEditUsers = isAdmin;
+  const canResetPasswords = isAdmin;
+  const canDeleteUsers = isAdmin;
 
   const fetchUsers = async () => {
     const { data: profiles } = await supabase.from('users').select('*').order('name');
@@ -62,14 +82,15 @@ const UserManagement: React.FC = () => {
 
     setCreatingUser(true);
     try {
-      const redirectTo = (import.meta.env.VITE_INVITE_REDIRECT_TO as string | undefined) || `${window.location.origin}/login`;
+      const redirectTo = (import.meta.env.VITE_INVITE_REDIRECT_TO as string | undefined) || `${window.location.origin}/set-password`;
+      const roleToInvite = !isAdmin && newRole === 'admin' ? 'employee' : newRole;
 
       const { data, error } = await supabase.functions.invoke('invite-user', {
         body: {
           email: newEmail.trim().toLowerCase(),
           name: newName.trim(),
-          role: newRole,
-          manager_id: newManagerId || null,
+          role: roleToInvite,
+          manager_id: newManagerId && newManagerId !== 'none' ? newManagerId : null,
           tag: newTag.trim() || null,
           redirect_to: redirectTo,
         },
@@ -83,7 +104,12 @@ const UserManagement: React.FC = () => {
       resetForm();
       fetchUsers();
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to send invite';
+      let message = error instanceof Error ? error.message : 'Failed to send invite';
+
+      if (error instanceof Error && error.name === 'FunctionsFetchError') {
+        message = 'Could not reach the invite Edge Function. Redeploy `invite-user` and confirm its CORS/env settings are configured in Supabase.';
+      }
+
       toast.error(message);
     } finally {
       setCreatingUser(false);
@@ -91,6 +117,7 @@ const UserManagement: React.FC = () => {
   };
 
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
+    setActionUserId(userId);
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     const { error } = await supabase.from('users').update({ status: newStatus }).eq('id', userId);
     if (error) {
@@ -99,6 +126,7 @@ const UserManagement: React.FC = () => {
       toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
       fetchUsers();
     }
+    setActionUserId(null);
   };
 
   const updateUserRole = async (userId: string, role: AppRole) => {
@@ -108,6 +136,67 @@ const UserManagement: React.FC = () => {
     toast.success('Role updated');
     fetchUsers();
     setEditUser(null);
+  };
+
+  const resetUserPassword = async (user: UserWithRoles) => {
+    setActionUserId(user.id);
+    try {
+      const redirectTo = (import.meta.env.VITE_INVITE_REDIRECT_TO as string | undefined) || `${window.location.origin}/set-password`;
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: {
+          action: 'reset_password',
+          user_id: user.id,
+          email: user.email,
+          redirect_to: redirectTo,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success(`Password reset email sent to ${user.email}`);
+    } catch (error: unknown) {
+      let message = error instanceof Error ? error.message : 'Failed to reset password';
+
+      if (error instanceof Error && error.name === 'FunctionsFetchError') {
+        message = 'Could not reach the `manage-user` Edge Function. Deploy `manage-user` and confirm its CORS/env settings are configured in Supabase.';
+      }
+
+      toast.error(message);
+    } finally {
+      setActionUserId(null);
+    }
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deleteUser) return;
+
+    setActionUserId(deleteUser.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('manage-user', {
+        body: {
+          action: 'delete',
+          user_id: deleteUser.id,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      toast.success(`Deleted ${deleteUser.email}`);
+      setDeleteUser(null);
+      fetchUsers();
+    } catch (error: unknown) {
+      let message = error instanceof Error ? error.message : 'Failed to delete user';
+
+      if (error instanceof Error && error.name === 'FunctionsFetchError') {
+        message = 'Could not reach the `manage-user` Edge Function. Deploy `manage-user` and confirm its CORS/env settings are configured in Supabase.';
+      }
+
+      toast.error(message);
+    } finally {
+      setActionUserId(null);
+    }
   };
 
   const updateUserManager = async (userId: string, managerId: string) => {
@@ -121,7 +210,7 @@ const UserManagement: React.FC = () => {
     setNewName('');
     setNewEmail('');
     setNewRole('employee');
-    setNewManagerId('');
+    setNewManagerId('none');
     setNewTag('');
   };
 
@@ -137,14 +226,17 @@ const UserManagement: React.FC = () => {
     finance: 'bg-success/15 text-success border-success/30',
   };
 
+  const adminAssignableRoles: AppRole[] = ['employee', 'hr', 'finance', 'admin'];
+  const hrAssignableRoles: AppRole[] = ['employee', 'hr', 'finance'];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">User Management</h1>
-          <p className="text-muted-foreground mt-1">Manage users, roles, and assignments</p>
+          <p className="text-muted-foreground mt-1">{isAdmin ? 'Manage users, roles, and assignments' : 'Invite users and manage active status'}</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-to-r from-primary to-info">
+        <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-to-r from-primary to-info" disabled={!canInviteUsers}>
           <Plus className="h-4 w-4 mr-2" />
           Invite User
         </Button>
@@ -191,12 +283,38 @@ const UserManagement: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => setEditUser(u)}>
-                        <UserCheck className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => toggleUserStatus(u.id, u.status)}>
-                        <UserX className="h-4 w-4" />
-                      </Button>
+                      {canEditUsers && (
+                        <Button variant="ghost" size="icon" onClick={() => setEditUser(u)} title="Edit user">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canToggleUsers && u.id !== currentProfile?.id && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => toggleUserStatus(u.id, u.status)}
+                          disabled={actionUserId === u.id}
+                          title={u.status === 'active' ? 'Deactivate user' : 'Activate user'}
+                        >
+                          {u.status === 'active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                        </Button>
+                      )}
+                      {canResetPasswords && u.id !== currentProfile?.id && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => resetUserPassword(u)}
+                          disabled={actionUserId === u.id}
+                          title="Send password reset"
+                        >
+                          <Mail className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canDeleteUsers && u.id !== currentProfile?.id && (
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteUser(u)} title="Delete user">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -227,10 +345,11 @@ const UserManagement: React.FC = () => {
                 <Select value={newRole} onValueChange={v => setNewRole(v as AppRole)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="employee">Employee</SelectItem>
-                    <SelectItem value="hr">HR</SelectItem>
-                    <SelectItem value="finance">Finance</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {(isAdmin ? adminAssignableRoles : hrAssignableRoles).map(role => (
+                      <SelectItem key={role} value={role}>
+                        {role === 'hr' ? 'HR' : role.charAt(0).toUpperCase() + role.slice(1)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -239,12 +358,12 @@ const UserManagement: React.FC = () => {
                 <Input value={newTag} onChange={e => setNewTag(e.target.value)} placeholder="Engineering" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label>Manager (Optional)</Label>
-              <Select value={newManagerId} onValueChange={setNewManagerId}>
-                <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No Manager</SelectItem>
+              <div className="space-y-2">
+                <Label>Manager (Optional)</Label>
+                <Select value={newManagerId} onValueChange={setNewManagerId}>
+                  <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">No Manager</SelectItem>
                   {/* All active users can be a manager */}
                   {users.filter(u => u.status === 'active').map(m => (
                     <SelectItem key={m.id} value={m.id}>{m.name} ({m.roles.join(', ')})</SelectItem>
@@ -273,10 +392,11 @@ const UserManagement: React.FC = () => {
                 <Select defaultValue={editUser.roles[0]} onValueChange={v => updateUserRole(editUser.id, v as AppRole)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="employee">Employee</SelectItem>
-                    <SelectItem value="hr">HR</SelectItem>
-                    <SelectItem value="finance">Finance</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    {adminAssignableRoles.map(role => (
+                      <SelectItem key={role} value={role}>
+                        {role === 'hr' ? 'HR' : role.charAt(0).toUpperCase() + role.slice(1)}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -297,6 +417,30 @@ const UserManagement: React.FC = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!deleteUser} onOpenChange={open => !open && setDeleteUser(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteUser
+                ? `This will permanently delete ${deleteUser.name} (${deleteUser.email}). This action cannot be undone.`
+                : 'This action cannot be undone.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionUserId === deleteUser?.id}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirmDeleteUser}
+              disabled={actionUserId === deleteUser?.id}
+            >
+              {actionUserId === deleteUser?.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete User
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

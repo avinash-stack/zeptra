@@ -17,6 +17,7 @@ const SubmitExpense: React.FC = () => {
   const [currency, setCurrency] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
+  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [receipt, setReceipt] = useState<File | null>(null);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [currencies, setCurrencies] = useState<OrgCurrency[]>([]);
@@ -59,6 +60,10 @@ const SubmitExpense: React.FC = () => {
       toast.error('Please select a category');
       return;
     }
+    if (!expenseDate) {
+      toast.error('Please select an expense date');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -88,7 +93,7 @@ const SubmitExpense: React.FC = () => {
         receipt_url: receiptUrl,
         status: 'pending_l1',
         current_approver_id: profileData?.manager_id || null,
-        submitted_at: new Date().toISOString(),
+        submitted_at: new Date(`${expenseDate}T12:00:00`).toISOString(),
       });
 
       if (error) throw error;
@@ -97,6 +102,7 @@ const SubmitExpense: React.FC = () => {
       setAmount('');
       setCategoryId('');
       setDescription('');
+      setExpenseDate(new Date().toISOString().slice(0, 10));
       setReceipt(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to submit expense');
@@ -170,6 +176,17 @@ const SubmitExpense: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expense-date">Expense Date</Label>
+              <Input
+                id="expense-date"
+                type="date"
+                value={expenseDate}
+                onChange={e => setExpenseDate(e.target.value)}
+                required
+              />
             </div>
 
             <div className="space-y-2">
