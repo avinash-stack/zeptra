@@ -37,6 +37,12 @@ Deno.serve(async (req) => {
       return json(401, { error: "Missing bearer token" });
     }
 
+    // Parse the request body ONCE before doing anything else
+    const body = await req.json().catch(() => null);
+    if (!body) {
+      return json(400, { error: "Invalid request payload" });
+    }
+
     const token = authHeader.replace("Bearer ", "");
 
     const admin = createClient(supabaseUrl, serviceRoleKey, {
@@ -75,11 +81,6 @@ Deno.serve(async (req) => {
 
     if (callerProfileError || !callerProfile?.org_id) {
       return json(500, { error: "Could not determine your organization" });
-    }
-
-    const body = await req.json().catch(() => null);
-    if (!body) {
-      return json(400, { error: "Invalid request payload" });
     }
 
     const email = String(body.email ?? "").trim().toLowerCase();
