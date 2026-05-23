@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { StatusBadge } from '@/components/StatusBadge';
 import { Button } from '@/components/ui/button';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
@@ -11,12 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Search, CheckCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Search, CheckCircle, XCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
+import { exportToCSV, exportToTallyXML } from '@/lib/exportUtils';
 import type { ExpenseWithDetails } from '@/types/database';
 
 const AllExpenses: React.FC = () => {
-  const { user, hasAnyRole } = useAuth();
+  const { user, hasAnyRole, organization } = useAuth();
   const isFinance = hasAnyRole(['finance']);
 
   const [expenses, setExpenses] = useState<ExpenseWithDetails[]>([]);
@@ -33,7 +35,7 @@ const AllExpenses: React.FC = () => {
   const fetchExpenses = async () => {
     let query = supabase
       .from('expenses')
-      .select('*, expense_categories(name)')
+      .select('*, expense_categories(name, gl_code)')
       .order('submitted_at', { ascending: false });
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
@@ -110,11 +112,44 @@ const AllExpenses: React.FC = () => {
     }
   };
 
+  const handleExportCSV = () => {
+    if (!expenses.length) { toast.error('No expenses to export'); return; }
+    exportToCSV(expenses, organization?.name || 'Zeptra');
+    toast.success(`Exported ${expenses.length} expenses as CSV`);
+  };
+
+  const handleExportTally = () => {
+    const approved = expenses.filter(e => e.status === 'approved');
+    if (!approved.length) { toast.error('No approved expenses to export for Tally'); return; }
+    exportToTallyXML(expenses, organization?.name || 'Zeptra');
+    toast.success(`Exported ${approved.length} approved expenses as Tally XML`);
+  };
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">All Expenses</h1>
-        <p className="text-muted-foreground mt-1">Organization-wide expense view</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">All Expenses</h1>
+          <p className="text-muted-foreground mt-1">Organization-wide expense view</p>
+        </div>
+        {(hasAnyRole(['admin', 'finance'])) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportCSV}>
+                Export CSV (QuickBooks)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportTally}>
+                Export Tally XML
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       <Card>
@@ -130,8 +165,8 @@ const AllExpenses: React.FC = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="pending_l1">Pending L1</SelectItem>
-                <SelectItem value="pending_l2">Pending L2</SelectItem>
+                <SelectItem value="pending_l1">Awaiting approval</SelectItem>
+                <SelectItem value="pending_l2">Under review</SelectItem>
                 <SelectItem value="approved">Approved</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>

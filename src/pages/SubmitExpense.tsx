@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Loader2, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Loader2, Upload, CheckCircle2, AlertTriangle, CheckCircle } from 'lucide-react';
 import type { ExpenseCategory, OrgCurrency, CategoryLimit } from '@/types/database';
 
 const SubmitExpense: React.FC = () => {
@@ -27,7 +27,7 @@ const SubmitExpense: React.FC = () => {
 
   // OCR states
   const [scanning, setScanning] = useState(false);
-  const [ocrDone, setOcrDone] = useState(false);
+  const [scanned, setScanned] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
 
   // Policy limit states
@@ -121,56 +121,45 @@ const SubmitExpense: React.FC = () => {
     : 0;
   const isPolicyException = perExpenseExceeded || monthlyExceeded;
 
+  const uploadReceipt = async (file: File): Promise<string | null> => {
+    if (!user) return null;
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('receipts').upload(path, file);
+      if (error) return null;
+      const { data } = supabase.storage.from('receipts').getPublicUrl(path);
+      return data.publicUrl;
+    } catch {
+      return null;
+    }
+  };
+
   const handleReceiptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-
     setReceipt(file);
-    setScanning(true);
-    setOcrDone(false);
+    setScanned(false);
     setReceiptUrl(null);
-
+    setScanning(true);
     try {
-      // 1. Upload to Supabase Storage
-      const ext = file.name.split('.').pop();
-      const path = `${user.id}/${Date.now()}.${ext}`;
-      const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file);
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
-      const uploadedUrl = urlData.publicUrl;
-      setReceiptUrl(uploadedUrl);
-
-      // 2. Call OCR Edge Function
-      const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-receipt', {
-        body: { receipt_url: uploadedUrl, org_id: profile?.org_id },
+      const url = await uploadReceipt(file);
+      if (!url) return;
+      setReceiptUrl(url);
+      const { data, error } = await supabase.functions.invoke('ocr-receipt', {
+        body: { receipt_url: url },
       });
-
-      if (ocrData && !ocrError) {
-        let filledAny = false;
-        if (ocrData.amount && !amount) {
-          setAmount(ocrData.amount);
-          filledAny = true;
-        }
-        if (ocrData.date && expenseDate === new Date().toISOString().slice(0, 10)) {
-          setExpenseDate(ocrData.date);
-          filledAny = true;
-        }
-        if (ocrData.suggested_description && !description) {
-          setDescription(ocrData.suggested_description);
-          filledAny = true;
-        }
-
-        setOcrDone(true);
-        if (filledAny) {
-          toast.info('We filled in some details — please review before submitting', {
-            duration: 5000,
-          });
+      if (!error && data) {
+        if (data.amount && !amount) setAmount(String(data.amount));
+        if (data.date) setExpenseDate(data.date);
+        if (data.description && !description) setDescription(data.description);
+        if (data.amount || data.date || data.description) {
+          toast.info('Receipt scanned — please review the details');
+          setScanned(true);
         }
       }
-    } catch (error: any) {
-      console.error('OCR or upload failed:', error);
-      // Fail silently for OCR, fallback to standard upload flow later
+    } catch {
+      // OCR failure is silent — never block the user
     } finally {
       setScanning(false);
     }
@@ -229,7 +218,7 @@ const SubmitExpense: React.FC = () => {
       setExpenseDate(new Date().toISOString().slice(0, 10));
       setReceipt(null);
       setReceiptUrl(null);
-      setOcrDone(false);
+      setScanned(false);
       setCategoryLimit(null);
       setMonthlySpend(null);
     } catch (error: any) {
@@ -367,32 +356,40 @@ const SubmitExpense: React.FC = () => {
             <div className="space-y-2">
               <Label htmlFor="receipt">Receipt</Label>
               <div
-                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${scanning ? 'border-primary/50 bg-primary/5' : 'hover:border-primary/50'}`}
+                className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
                 onClick={() => !scanning && document.getElementById('receipt-input')?.click()}
               >
                 {scanning ? (
-                  <Loader2 className="w-8 h-8 mx-auto text-primary animate-spin mb-2" />
+                  <div className="flex flex-col items-center gap-2">
+                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Scanning receipt...</p>
+                  </div>
                 ) : (
-                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                  <>
+                    <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      {receipt ? (
+                        <span className="flex items-center justify-center gap-2">
+                          {receipt.name}
+                          {scanned && (
+                            <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                              ✓ Scanned
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        'Click to upload or drag and drop'
+                      )}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG up to 10MB</p>
+                  </>
                 )}
-                <div className="flex items-center justify-center gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {scanning ? 'Scanning receipt...' : receipt ? receipt.name : 'Click to upload or drag and drop'}
-                  </p>
-                  {ocrDone && receipt && !scanning && (
-                    <Badge variant="outline" className="bg-success/10 text-success border-success/20">
-                      <CheckCircle2 className="w-3 h-3 mr-1" /> Scanned
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG up to 10MB</p>
                 <input
                   id="receipt-input"
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg"
                   className="hidden"
                   onChange={handleReceiptChange}
-                  disabled={scanning}
                 />
               </div>
             </div>

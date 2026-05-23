@@ -60,6 +60,7 @@ export interface ExpenseCategory {
   id: string;
   org_id: string | null;
   name: string;
+  gl_code?: string | null;
   is_active: boolean;
   created_at: string;
 }

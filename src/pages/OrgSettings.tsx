@@ -41,6 +41,7 @@ const OrgSettings: React.FC = () => {
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<ExpenseCategory | null>(null);
   const [catName, setCatName] = useState('');
+  const [catGlCode, setCatGlCode] = useState('');
   const [catMonthlyLimit, setCatMonthlyLimit] = useState('');
   const [catPerExpenseLimit, setCatPerExpenseLimit] = useState('');
 
@@ -128,6 +129,7 @@ const OrgSettings: React.FC = () => {
   const openCatDialog = (cat?: ExpenseCategory) => {
     setEditingCat(cat || null);
     setCatName(cat?.name || '');
+    setCatGlCode(cat?.gl_code || '');
     const lim = cat ? categoryLimits[cat.id] : undefined;
     setCatMonthlyLimit(lim?.monthly_limit != null ? String(lim.monthly_limit) : '');
     setCatPerExpenseLimit(lim?.per_expense_limit != null ? String(lim.per_expense_limit) : '');
@@ -137,16 +139,17 @@ const OrgSettings: React.FC = () => {
   const saveCat = async () => {
     if (!catName.trim() || !profile?.org_id) return;
     let catId = editingCat?.id;
+    const glCodeVal = catGlCode.trim() || null;
     if (editingCat) {
       const { error } = await supabase
         .from('expense_categories')
-        .update({ name: catName.trim() })
+        .update({ name: catName.trim(), gl_code: glCodeVal })
         .eq('id', editingCat.id);
       if (error) { toast.error(error.message); return; }
     } else {
       const { data: newCat, error } = await supabase
         .from('expense_categories')
-        .insert({ org_id: profile.org_id, name: catName.trim() })
+        .insert({ org_id: profile.org_id, name: catName.trim(), gl_code: glCodeVal })
         .select('id')
         .single();
       if (error) { toast.error(error.message); return; }
@@ -373,6 +376,7 @@ const OrgSettings: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>GL Code</TableHead>
                     <TableHead>Limit</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
@@ -385,6 +389,7 @@ const OrgSettings: React.FC = () => {
                     return (
                     <TableRow key={cat.id}>
                       <TableCell className="font-medium">{cat.name}</TableCell>
+                      <TableCell>{cat.gl_code || <span className="text-muted-foreground text-xs">—</span>}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {lim?.per_expense_limit != null && (
@@ -423,7 +428,7 @@ const OrgSettings: React.FC = () => {
                   })}
                   {categories.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                         No categories yet. Click "Add Category" to create one.
                       </TableCell>
                     </TableRow>
@@ -638,7 +643,7 @@ const OrgSettings: React.FC = () => {
       </Tabs>
 
       {/* Category Dialog */}
-      <Dialog open={catDialogOpen} onOpenChange={setCatDialogOpen}>
+      <Dialog open={catDialogOpen} onOpenChange={open => { setCatDialogOpen(open); if (!open) { setCatGlCode(''); setCatName(''); } }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingCat ? 'Edit Category' : 'Add Category'}</DialogTitle>
@@ -647,6 +652,16 @@ const OrgSettings: React.FC = () => {
             <div className="space-y-2">
               <Label>Category Name</Label>
               <Input value={catName} onChange={e => setCatName(e.target.value)} placeholder="e.g. Travel" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="gl-code">GL Code <span className="text-muted-foreground text-xs">(optional)</span></Label>
+              <Input
+                id="gl-code"
+                placeholder="e.g. 6001"
+                value={catGlCode}
+                onChange={e => setCatGlCode(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">Used for Tally and QuickBooks exports</p>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
