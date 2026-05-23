@@ -1,18 +1,30 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { StatusBadge } from '@/components/StatusBadge';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Search } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { AlertTriangle, Search, CheckCircle, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ExpenseWithDetails } from '@/types/database';
 
 const AllExpenses: React.FC = () => {
+  const { user, hasAnyRole } = useAuth();
+  const isFinance = hasAnyRole(['finance']);
+
   const [expenses, setExpenses] = useState<ExpenseWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [rejectExpense, setRejectExpense] = useState<ExpenseWithDetails | null>(null);
+  const [rejectComment, setRejectComment] = useState('');
 
   useEffect(() => {
     fetchExpenses();
@@ -52,10 +64,56 @@ const AllExpenses: React.FC = () => {
     e.description.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const handleFinanceApprove = async (expense: ExpenseWithDetails) => {
+    try {
+      await supabase.from('expenses').update({
+        status: 'approved',
+        current_approver_id: null,
+        decided_at: new Date().toISOString(),
+      }).eq('id', expense.id);
+
+      await supabase.from('approval_history').insert({
+        expense_id: expense.id,
+        approver_id: user!.id,
+        action: 'approved',
+        level: 2,
+      });
+      toast.success('Expense approved');
+      fetchExpenses();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to approve');
+    }
+  };
+
+  const handleFinanceReject = async () => {
+    if (!rejectExpense) return;
+    try {
+      await supabase.from('expenses').update({
+        status: 'rejected',
+        current_approver_id: null,
+        decided_at: new Date().toISOString(),
+      }).eq('id', rejectExpense.id);
+
+      await supabase.from('approval_history').insert({
+        expense_id: rejectExpense.id,
+        approver_id: user!.id,
+        action: 'rejected',
+        level: 2,
+        comments: rejectComment,
+      });
+      toast.success('Expense rejected');
+      setRejectExpense(null);
+      setRejectComment('');
+      fetchExpenses();
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to reject');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">All Expenses</h1>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">All Expenses</h1>
         <p className="text-muted-foreground mt-1">Organization-wide expense view</p>
       </div>
 
@@ -90,6 +148,7 @@ const AllExpenses: React.FC = () => {
                 <TableHead>Description</TableHead>
                 <TableHead>Amount</TableHead>
                 <TableHead>Status</TableHead>
+                {isFinance && <TableHead>Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -108,13 +167,54 @@ const AllExpenses: React.FC = () => {
                     {Number(expense.amount).toFixed(2)}
                     <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
                   </TableCell>
-                  <TableCell><StatusBadge status={expense.status} /></TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusBadge status={expense.status} managerView={true} />
+                      {expense.is_policy_exception && (
+                        <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
+                          <AlertTriangle className="mr-1 h-3 w-3" />
+                          Policy exception
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
+                  {isFinance && (
+                    <TableCell>
+                      {(expense.status === 'pending_l1' || expense.status === 'pending_l2') && (
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="ghost" className="text-success" onClick={() => handleFinanceApprove(expense)}>
+                            <CheckCircle className="h-4 w-4" />
+                          </Button>
+                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRejectExpense(expense)}>
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!rejectExpense} onOpenChange={open => !open && setRejectExpense(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Expense</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Comments</Label>
+              <Textarea value={rejectComment} onChange={e => setRejectComment(e.target.value)} placeholder="Reason for rejection..." />
+            </div>
+            <Button className="w-full bg-destructive hover:bg-destructive/90" onClick={handleFinanceReject}>
+              Reject Expense
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

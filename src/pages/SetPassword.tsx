@@ -117,7 +117,7 @@ const SetPassword: React.FC = () => {
               </div>
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-primary to-info"
+                className="w-full bg-gradient-to-r from-primary to-accent"
                 disabled={saving}
               >
                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -125,7 +125,7 @@ const SetPassword: React.FC = () => {
               </Button>
             </form>
           ) : (
-            <Button className="w-full bg-gradient-to-r from-primary to-info" onClick={() => navigate('/login', { replace: true })}>
+            <Button className="w-full bg-gradient-to-r from-primary to-accent" onClick={() => navigate('/login', { replace: true })}>
               Back to Login
             </Button>
           )}

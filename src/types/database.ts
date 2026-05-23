@@ -78,6 +78,7 @@ export interface Expense {
   current_approver_id: string | null;
   submitted_at: string;
   decided_at: string | null;
+  is_policy_exception: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -98,4 +99,51 @@ export interface ApprovalHistory {
 export interface ExpenseWithDetails extends Expense {
   users?: Profile;
   expense_categories?: ExpenseCategory;
+}
+
+// ---- Billing / Subscriptions ----
+
+export type PlanType = 'free' | 'pro' | 'enterprise';
+
+export interface Subscription {
+  id: string;
+  org_id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  plan: PlanType;
+  status: string;
+  current_period_end: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PlanLimit {
+  plan: PlanType;
+  max_users: number;
+  max_expenses_per_month: number;
+  has_analytics: boolean;
+  has_api: boolean;
+}
+
+// ---- Notification Preferences ----
+
+export interface NotificationPreferences {
+  id: string;
+  user_id: string;
+  on_expense_submitted: boolean;
+  on_expense_approved: boolean;
+  on_expense_rejected: boolean;
+  on_approval_needed: boolean;
+}
+
+// ---- Category Spend Limits ----
+
+export interface CategoryLimit {
+  id: string;
+  org_id: string;
+  category_id: string;
+  monthly_limit: number | null;
+  per_expense_limit: number | null;
+  created_at: string;
+  updated_at: string;
 }

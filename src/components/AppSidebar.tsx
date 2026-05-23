@@ -39,12 +39,12 @@ export function AppSidebar() {
 
   // Approvals visible to anyone who is a manager-of-someone, or admin
   const managerItems = [
-    { title: 'Approvals', url: '/app/approvals', icon: CheckSquare, show: isManager || hasRole('admin') },
+    { title: 'Approvals', url: '/app/approvals', icon: CheckSquare, show: isManager || hasRole('admin') || hasRole('finance') },
   ];
 
   const adminItems = [
     { title: 'All Expenses', url: '/app/all-expenses', icon: List, show: hasAnyRole(['finance', 'admin']) },
-    { title: 'User Management', url: '/app/users', icon: Users, show: hasRole('admin') },
+    { title: 'User Management', url: '/app/users', icon: Users, show: hasRole('admin') || hasRole('hr') },
     { title: 'Org Settings', url: '/app/settings', icon: Settings, show: hasRole('admin') },
   ];
 

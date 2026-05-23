@@ -6,7 +6,7 @@ const Help: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
           Help & Support
         </h1>
         <p className="text-muted-foreground mt-1">Find answers and get assistance</p>
@@ -15,7 +15,7 @@ const Help: React.FC = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <FileText className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>

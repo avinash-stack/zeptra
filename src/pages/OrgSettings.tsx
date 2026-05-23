@@ -10,13 +10,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Building2, Coins, Tags, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
-import type { Organization, ExpenseCategory, OrgCurrency } from '@/types/database';
+import { Building2, Coins, Tags, Loader2, Plus, Pencil, Trash2, CreditCard, Zap, Crown, Users, Receipt, Check } from 'lucide-react';
+import { usePlanLimit } from '@/hooks/usePlanLimit';
+import type { Organization, ExpenseCategory, OrgCurrency, PlanType, CategoryLimit } from '@/types/database';
+
+const planBadgeStyles: Record<PlanType, string> = {
+  free: 'bg-muted text-muted-foreground border-muted-foreground/30',
+  pro: 'bg-primary/15 text-primary border-primary/30',
+  enterprise: 'bg-gradient-to-r from-primary/15 to-info/15 text-primary border-primary/30',
+};
 
 const OrgSettings: React.FC = () => {
-  const { organization, refreshOrg, profile } = useAuth();
+  const { organization, refreshOrg, profile, hasRole } = useAuth();
   const [activeTab, setActiveTab] = useState('general');
+  const billing = usePlanLimit();
+  const [checkoutLoading, setCheckoutLoading] = useState<'pro' | 'enterprise' | null>(null);
 
   // General
   const [orgName, setOrgName] = useState('');
@@ -27,9 +37,12 @@ const OrgSettings: React.FC = () => {
 
   // Categories
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
+  const [categoryLimits, setCategoryLimits] = useState<Record<string, CategoryLimit>>({});
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [editingCat, setEditingCat] = useState<ExpenseCategory | null>(null);
   const [catName, setCatName] = useState('');
+  const [catMonthlyLimit, setCatMonthlyLimit] = useState('');
+  const [catPerExpenseLimit, setCatPerExpenseLimit] = useState('');
 
   // Currencies
   const [currencies, setCurrencies] = useState<OrgCurrency[]>([]);
@@ -38,6 +51,9 @@ const OrgSettings: React.FC = () => {
   const [currCode, setCurrCode] = useState('');
   const [currSymbol, setCurrSymbol] = useState('');
   const [currName, setCurrName] = useState('');
+
+  // Derived default currency symbol for limit display
+  const defaultCurrSymbol = currencies.find(c => c.is_default)?.symbol || '₹';
 
   useEffect(() => {
     if (organization) {
@@ -61,6 +77,17 @@ const OrgSettings: React.FC = () => {
       .eq('org_id', profile.org_id)
       .order('name');
     if (data) setCategories(data as ExpenseCategory[]);
+
+    // Fetch limits
+    const { data: limitsData } = await supabase
+      .from('category_limits')
+      .select('*')
+      .eq('org_id', profile.org_id);
+    if (limitsData) {
+      const map: Record<string, CategoryLimit> = {};
+      (limitsData as CategoryLimit[]).forEach(l => { map[l.category_id] = l; });
+      setCategoryLimits(map);
+    }
   };
 
   const fetchCurrencies = async () => {
@@ -101,25 +128,59 @@ const OrgSettings: React.FC = () => {
   const openCatDialog = (cat?: ExpenseCategory) => {
     setEditingCat(cat || null);
     setCatName(cat?.name || '');
+    const lim = cat ? categoryLimits[cat.id] : undefined;
+    setCatMonthlyLimit(lim?.monthly_limit != null ? String(lim.monthly_limit) : '');
+    setCatPerExpenseLimit(lim?.per_expense_limit != null ? String(lim.per_expense_limit) : '');
     setCatDialogOpen(true);
   };
 
   const saveCat = async () => {
     if (!catName.trim() || !profile?.org_id) return;
+    let catId = editingCat?.id;
     if (editingCat) {
       const { error } = await supabase
         .from('expense_categories')
         .update({ name: catName.trim() })
         .eq('id', editingCat.id);
       if (error) { toast.error(error.message); return; }
-      toast.success('Category updated');
     } else {
-      const { error } = await supabase
+      const { data: newCat, error } = await supabase
         .from('expense_categories')
-        .insert({ org_id: profile.org_id, name: catName.trim() });
+        .insert({ org_id: profile.org_id, name: catName.trim() })
+        .select('id')
+        .single();
       if (error) { toast.error(error.message); return; }
-      toast.success('Category created');
+      catId = newCat?.id;
     }
+
+    // Upsert category limits
+    if (catId) {
+      const monthlyVal = catMonthlyLimit.trim() ? parseFloat(catMonthlyLimit) : null;
+      const perExpVal = catPerExpenseLimit.trim() ? parseFloat(catPerExpenseLimit) : null;
+
+      if (monthlyVal !== null || perExpVal !== null) {
+        const { error: limitError } = await supabase
+          .from('category_limits')
+          .upsert({
+            org_id: profile.org_id,
+            category_id: catId,
+            monthly_limit: monthlyVal,
+            per_expense_limit: perExpVal,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'category_id' });
+        if (limitError) { toast.error(limitError.message); return; }
+      } else if (categoryLimits[catId]) {
+        // Remove limits if both cleared
+        const { error: limitError } = await supabase
+          .from('category_limits')
+          .delete()
+          .eq('category_id', catId)
+          .eq('org_id', profile.org_id);
+        if (limitError) { toast.error(limitError.message); return; }
+      }
+    }
+
+    toast.success(editingCat ? 'Category updated' : 'Category created');
     setCatDialogOpen(false);
     fetchCategories();
   };
@@ -193,10 +254,50 @@ const OrgSettings: React.FC = () => {
     fetchCurrencies();
   };
 
+  const handleUpgrade = async (plan: 'pro' | 'enterprise') => {
+    if (!organization) return;
+    setCheckoutLoading(plan);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-checkout', {
+        body: { plan, org_id: organization.id },
+      });
+
+      if (error) {
+        let detail = '';
+        try {
+          if ((error as any).context) {
+            const res = (error as any).context as Response;
+            const body = await res.json();
+            detail = body?.error || '';
+          }
+        } catch { /* ignore parse errors */ }
+        throw new Error(detail || error.message);
+      }
+      if (data?.error) throw new Error(data.error);
+
+      if (data?.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned');
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to start checkout';
+      toast.error(message);
+    } finally {
+      setCheckoutLoading(null);
+    }
+  };
+
+  const usagePercent = (current: number, max: number) => {
+    if (max === -1) return 0; // unlimited
+    if (max === 0) return 100;
+    return Math.min(Math.round((current / max) * 100), 100);
+  };
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
           Organization Settings
         </h1>
         <p className="text-muted-foreground mt-1">
@@ -205,7 +306,7 @@ const OrgSettings: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="general" className="flex items-center gap-1.5">
             <Building2 className="h-4 w-4" /> General
           </TabsTrigger>
@@ -214,6 +315,9 @@ const OrgSettings: React.FC = () => {
           </TabsTrigger>
           <TabsTrigger value="currencies" className="flex items-center gap-1.5">
             <Coins className="h-4 w-4" /> Currencies
+          </TabsTrigger>
+          <TabsTrigger value="billing" className="flex items-center gap-1.5">
+            <CreditCard className="h-4 w-4" /> Billing
           </TabsTrigger>
         </TabsList>
 
@@ -244,7 +348,7 @@ const OrgSettings: React.FC = () => {
                   <Input value={bizPhone} onChange={e => setBizPhone(e.target.value)} />
                 </div>
               </div>
-              <Button onClick={saveGeneral} disabled={savingGeneral} className="bg-gradient-to-r from-primary to-info">
+              <Button onClick={saveGeneral} disabled={savingGeneral} className="bg-gradient-to-r from-primary to-accent">
                 {savingGeneral && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>
@@ -260,7 +364,7 @@ const OrgSettings: React.FC = () => {
                 <CardTitle>Expense Categories</CardTitle>
                 <CardDescription>Create and manage expense types for your organization</CardDescription>
               </div>
-              <Button size="sm" onClick={() => openCatDialog()} className="bg-gradient-to-r from-primary to-info">
+              <Button size="sm" onClick={() => openCatDialog()} className="bg-gradient-to-r from-primary to-accent">
                 <Plus className="h-4 w-4 mr-1" /> Add Category
               </Button>
             </CardHeader>
@@ -269,14 +373,33 @@ const OrgSettings: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Limit</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {categories.map(cat => (
+                  {categories.map(cat => {
+                    const lim = categoryLimits[cat.id];
+                    const hasLimits = lim?.per_expense_limit != null || lim?.monthly_limit != null;
+                    return (
                     <TableRow key={cat.id}>
                       <TableCell className="font-medium">{cat.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {lim?.per_expense_limit != null && (
+                            <Badge variant="outline" className="text-xs bg-primary/5 border-primary/20">
+                              {defaultCurrSymbol}{Number(lim.per_expense_limit).toLocaleString()}/exp
+                            </Badge>
+                          )}
+                          {lim?.monthly_limit != null && (
+                            <Badge variant="outline" className="text-xs bg-info/5 border-info/20">
+                              {defaultCurrSymbol}{Number(lim.monthly_limit).toLocaleString()}/mo
+                            </Badge>
+                          )}
+                          {!hasLimits && <span className="text-xs text-muted-foreground">—</span>}
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Switch checked={cat.is_active} onCheckedChange={() => toggleCat(cat)} />
@@ -296,10 +419,11 @@ const OrgSettings: React.FC = () => {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                   {categories.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                         No categories yet. Click "Add Category" to create one.
                       </TableCell>
                     </TableRow>
@@ -318,7 +442,7 @@ const OrgSettings: React.FC = () => {
                 <CardTitle>Currencies</CardTitle>
                 <CardDescription>Define which currencies your organization uses</CardDescription>
               </div>
-              <Button size="sm" onClick={() => openCurrDialog()} className="bg-gradient-to-r from-primary to-info">
+              <Button size="sm" onClick={() => openCurrDialog()} className="bg-gradient-to-r from-primary to-accent">
                 <Plus className="h-4 w-4 mr-1" /> Add Currency
               </Button>
             </CardHeader>
@@ -374,6 +498,143 @@ const OrgSettings: React.FC = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ---- Billing ---- */}
+        <TabsContent value="billing">
+          {billing.isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Current Plan */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    {billing.plan === 'enterprise' ? <Crown className="h-5 w-5 text-primary" /> : billing.plan === 'pro' ? <Zap className="h-5 w-5 text-primary" /> : <CreditCard className="h-5 w-5" />}
+                    Current Plan
+                  </CardTitle>
+                  <CardDescription>Your organization's subscription details</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <Badge variant="outline" className={`text-sm px-3 py-1 ${planBadgeStyles[billing.plan]}`}>
+                      {billing.plan.charAt(0).toUpperCase() + billing.plan.slice(1)}
+                    </Badge>
+                    {billing.subscription?.status && billing.subscription.status !== 'active' && (
+                      <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
+                        {billing.subscription.status}
+                      </Badge>
+                    )}
+                  </div>
+                  {billing.subscription?.current_period_end && billing.plan !== 'free' && (
+                    <p className="text-sm text-muted-foreground">
+                      {billing.subscription.status === 'canceling' ? 'Access until' : 'Renews on'}{' '}
+                      <span className="font-medium text-foreground">
+                        {new Date(billing.subscription.current_period_end).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+                      </span>
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Usage */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Usage</CardTitle>
+                  <CardDescription>Current usage against your plan limits</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2"><Users className="h-4 w-4" /> Users</span>
+                      <span className="font-medium">
+                        {billing.userCount} / {billing.limits?.max_users === -1 ? '∞' : billing.limits?.max_users ?? '–'}
+                      </span>
+                    </div>
+                    <Progress
+                      value={usagePercent(billing.userCount, billing.limits?.max_users ?? 5)}
+                      className="h-2"
+                    />
+                    {billing.userLimitReached && (
+                      <p className="text-xs text-destructive">User limit reached. Upgrade your plan to add more users.</p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Expenses this month</span>
+                      <span className="font-medium">
+                        {billing.expenseCount} / {billing.limits?.max_expenses_per_month === -1 ? '∞' : billing.limits?.max_expenses_per_month ?? '–'}
+                      </span>
+                    </div>
+                    <Progress
+                      value={usagePercent(billing.expenseCount, billing.limits?.max_expenses_per_month ?? 50)}
+                      className="h-2"
+                    />
+                    {billing.expenseLimitReached && (
+                      <p className="text-xs text-destructive">Monthly expense limit reached. Upgrade to submit more.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Upgrade Options */}
+              {billing.plan !== 'enterprise' && hasRole('admin') && (
+                <div className="grid gap-6 md:grid-cols-2">
+                  {billing.plan === 'free' && (
+                    <Card className="border-primary/30">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <Zap className="h-5 w-5 text-primary" /> Pro
+                        </CardTitle>
+                        <CardDescription>For growing teams that need more power</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <ul className="space-y-2 text-sm">
+                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Up to 50 users</li>
+                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited expenses</li>
+                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
+                        </ul>
+                        <Button
+                          onClick={() => handleUpgrade('pro')}
+                          disabled={checkoutLoading !== null}
+                          className="w-full bg-gradient-to-r from-primary to-accent"
+                        >
+                          {checkoutLoading === 'pro' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Upgrade to Pro
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                  <Card className="border-primary/30">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Crown className="h-5 w-5 text-primary" /> Enterprise
+                      </CardTitle>
+                      <CardDescription>Unlimited everything for large organizations</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited users</li>
+                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited expenses</li>
+                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
+                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> API access</li>
+                      </ul>
+                      <Button
+                        onClick={() => handleUpgrade('enterprise')}
+                        disabled={checkoutLoading !== null}
+                        className="w-full bg-gradient-to-r from-primary to-accent"
+                      >
+                        {checkoutLoading === 'enterprise' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Upgrade to Enterprise
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* Category Dialog */}
@@ -387,7 +648,33 @@ const OrgSettings: React.FC = () => {
               <Label>Category Name</Label>
               <Input value={catName} onChange={e => setCatName(e.target.value)} placeholder="e.g. Travel" />
             </div>
-            <Button onClick={saveCat} className="w-full bg-gradient-to-r from-primary to-info">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Monthly limit</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={catMonthlyLimit}
+                  onChange={e => setCatMonthlyLimit(e.target.value)}
+                  placeholder="No limit"
+                />
+                <p className="text-xs text-muted-foreground">Max total spend per month</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Per-expense limit</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={catPerExpenseLimit}
+                  onChange={e => setCatPerExpenseLimit(e.target.value)}
+                  placeholder="No limit"
+                />
+                <p className="text-xs text-muted-foreground">Max amount per single expense</p>
+              </div>
+            </div>
+            <Button onClick={saveCat} className="w-full bg-gradient-to-r from-primary to-accent">
               {editingCat ? 'Update' : 'Create'} Category
             </Button>
           </div>
@@ -415,7 +702,7 @@ const OrgSettings: React.FC = () => {
               <Label>Currency Name</Label>
               <Input value={currName} onChange={e => setCurrName(e.target.value)} placeholder="US Dollar" />
             </div>
-            <Button onClick={saveCurr} className="w-full bg-gradient-to-r from-primary to-info">
+            <Button onClick={saveCurr} className="w-full bg-gradient-to-r from-primary to-accent">
               {editingCurr ? 'Update' : 'Add'} Currency
             </Button>
           </div>

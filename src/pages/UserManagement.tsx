@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, Mail, Pencil, Plus, Search, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Loader2, Mail, Pencil, Plus, Search, Trash2, UserCheck, UserX, AlertTriangle } from 'lucide-react';
+import { usePlanLimit } from '@/hooks/usePlanLimit';
 import type { Profile, AppRole } from '@/types/database';
 
 interface UserWithRoles extends Profile {
@@ -30,6 +31,7 @@ interface UserWithRoles extends Profile {
 
 const UserManagement: React.FC = () => {
   const { profile: currentProfile, roles } = useAuth();
+  const billing = usePlanLimit();
   const [users, setUsers] = useState<UserWithRoles[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingUser, setCreatingUser] = useState(false);
@@ -54,7 +56,7 @@ const UserManagement: React.FC = () => {
   const isHr = roles.includes('hr');
   const canInviteUsers = isAdmin || isHr;
   const canToggleUsers = isAdmin || isHr;
-  const canEditUsers = isAdmin;
+  const canEditUsers = isAdmin || isHr;
   const canResetPasswords = isAdmin;
   const canDeleteUsers = isAdmin;
 
@@ -239,14 +241,32 @@ const UserManagement: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">User Management</h1>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">User Management</h1>
           <p className="text-muted-foreground mt-1">{isAdmin ? 'Manage users, roles, and assignments' : 'Invite users and manage active status'}</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-to-r from-primary to-info" disabled={!canInviteUsers}>
+        <Button
+          onClick={() => setShowCreateDialog(true)}
+          className="bg-gradient-to-r from-primary to-accent"
+          disabled={!canInviteUsers || billing.userLimitReached}
+          title={billing.userLimitReached ? 'User limit reached for your plan' : undefined}
+        >
           <Plus className="h-4 w-4 mr-2" />
           Invite User
         </Button>
       </div>
+
+      {billing.userLimitReached && (
+        <Card className="border-warning/30 bg-warning/5">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
+            <p className="text-sm">
+              Your <span className="font-semibold">{billing.plan}</span> plan allows up to{' '}
+              <span className="font-semibold">{billing.limits?.max_users}</span> users.
+              {' '}Upgrade your plan in <span className="font-semibold">Organization Settings → Billing</span> to add more.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -377,7 +397,7 @@ const UserManagement: React.FC = () => {
                 </SelectContent>
               </Select>
             </div>
-            <Button onClick={handleCreateUser} disabled={creatingUser} className="w-full bg-gradient-to-r from-primary to-info">
+            <Button onClick={handleCreateUser} disabled={creatingUser} className="w-full bg-gradient-to-r from-primary to-accent">
               {creatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Send Activation Invite
             </Button>
@@ -398,7 +418,7 @@ const UserManagement: React.FC = () => {
                 <Select defaultValue={editUser.roles[0]} onValueChange={v => updateUserRole(editUser.id, v as AppRole)}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {adminAssignableRoles.map(role => (
+                    {(isAdmin ? adminAssignableRoles : hrAssignableRoles).map(role => (
                       <SelectItem key={role} value={role}>
                         {role === 'hr' ? 'HR' : role.charAt(0).toUpperCase() + role.slice(1)}
                       </SelectItem>

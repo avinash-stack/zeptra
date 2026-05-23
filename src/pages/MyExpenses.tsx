@@ -98,7 +98,7 @@ const MyExpenses: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">My Expenses</h1>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">My Expenses</h1>
         <p className="text-muted-foreground mt-1">View and manage your submitted expenses</p>
       </div>
 
@@ -203,7 +203,7 @@ const MyExpenses: React.FC = () => {
               <Label>Description</Label>
               <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} />
             </div>
-            <Button onClick={handleEdit} className="w-full bg-gradient-to-r from-primary to-info">Save Changes</Button>
+            <Button onClick={handleEdit} className="w-full bg-gradient-to-r from-primary to-accent">Save Changes</Button>
           </div>
         </DialogContent>
       </Dialog>

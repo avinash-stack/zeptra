@@ -12,14 +12,14 @@ const ProfilePage: React.FC = () => {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">Profile</h1>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Profile</h1>
         <p className="text-muted-foreground mt-1">Your account information</p>
       </div>
 
       <Card>
         <CardHeader>
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <span className="text-2xl font-bold text-primary-foreground">
                 {profile.name?.charAt(0)?.toUpperCase()}
               </span>

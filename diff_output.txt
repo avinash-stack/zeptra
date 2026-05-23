@@ -1,0 +1,2464 @@
+diff --git a/src/components/AppLayout.tsx b/src/components/AppLayout.tsx
+index 26b7957..84cdf94 100644
+--- a/src/components/AppLayout.tsx
++++ b/src/components/AppLayout.tsx
+@@ -41,7 +41,7 @@ const AppLayout: React.FC = () => {
+               <DropdownMenu>
+                 <DropdownMenuTrigger asChild>
+                   <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full p-0 overflow-hidden">
+-                    <div className="w-full h-full rounded-full bg-gradient-to-br from-primary to-info flex items-center justify-center">
++                    <div className="w-full h-full rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+                       <span className="text-xs font-bold text-primary-foreground">
+                         {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
+                       </span>
+diff --git a/src/index.css b/src/index.css
+index 854ea82..45e79bf 100644
+--- a/src/index.css
++++ b/src/index.css
+@@ -4,118 +4,123 @@
+ 
+ @layer base {
+   :root {
+-    /* Light background: Soft Gray Blue #E6F2FF */
+-    --background: 210 100% 95%;
+-    --foreground: 222 84% 7%;
++    /* Brilliance */
++    --background: 0 20% 99%;
++    /* Night Black */
++    --foreground: 228 7% 19%;
+ 
+     --card: 0 0% 100%;
+-    --card-foreground: 222 84% 7%;
++    --card-foreground: 228 7% 19%;
+ 
+     --popover: 0 0% 100%;
+-    --popover-foreground: 222 84% 7%;
++    --popover-foreground: 228 7% 19%;
+ 
+-    /* Brand Blue: Royal Blue #1E40AF */
+-    --primary: 224 73% 40%;
++    /* Precious Persimmon */
++    --primary: 21 93% 60%;
+     --primary-foreground: 0 0% 100%;
+ 
+-    --secondary: 210 60% 92%;
+-    --secondary-foreground: 222 84% 7%;
++    /* Violet Essence */
++    --secondary: 300 2% 90%;
++    --secondary-foreground: 228 7% 19%;
+ 
+-    --muted: 210 40% 94%;
+-    --muted-foreground: 215 20% 46%;
++    --muted: 300 2% 90%;
++    /* Palladium */
++    --muted-foreground: 0 0% 69%;
+ 
+-    /* Accent Blue: Bright Blue #2563EB */
+-    --accent: 217 91% 65%;
+-    --accent-foreground: 0 0% 100%;
++    /* No Way Rosé */
++    --accent: 17 87% 78%;
++    --accent-foreground: 228 7% 19%;
+ 
++    /* Keep existing red */
+     --destructive: 0 84% 60%;
+     --destructive-foreground: 0 0% 100%;
+ 
++    /* Keep existing green */
+     --success: 142 71% 45%;
+     --success-foreground: 0 0% 100%;
+ 
++    /* Keep existing amber */
+     --warning: 38 92% 50%;
+     --warning-foreground: 0 0% 100%;
+ 
+-    /* Sky Blue #38BDF8 */
+-    --info: 199 89% 60%;
+-    --info-foreground: 0 0% 100%;
++    /* Maps to No Way Rosé */
++    --info: 17 87% 78%;
++    /* Dark coral text */
++    --info-foreground: 17 71% 26%;
+ 
+-    --border: 214 32% 88%;
+-    --input: 214 32% 88%;
+-    /* Bright Blue ring */
+-    --ring: 217 91% 60%;
++    --border: 300 2% 90%;
++    --input: 300 2% 90%;
++    --ring: 21 93% 60%;
+ 
+     --radius: 0.75rem;
+ 
+-    /* Sidebar: Deep Navy #0F172A */
+-    --sidebar-background: 222 84% 7%;
+-    --sidebar-foreground: 210 40% 92%;
+-    /* Royal Blue #1E40AF */
+-    --sidebar-primary: 224 73% 55%;
++    /* Sidebar Background: Night Black */
++    --sidebar-background: 228 7% 19%;
++    --sidebar-foreground: 0 20% 99%;
++    --sidebar-primary: 21 93% 60%;
+     --sidebar-primary-foreground: 0 0% 100%;
+-    /* Slightly lighter navy for hover */
+-    --sidebar-accent: 220 60% 14%;
+-    --sidebar-accent-foreground: 210 40% 92%;
+-    --sidebar-border: 220 50% 12%;
+-    --sidebar-ring: 224 73% 55%;
+-
+-    /* Gradient: Royal Blue → Sky Blue */
+-    --gradient-start: 224 73% 40%;
+-    --gradient-end: 199 89% 60%;
++    /* 3D3E43 */
++    --sidebar-accent: 228 5% 25%;
++    --sidebar-accent-foreground: 0 20% 99%;
++    --sidebar-border: 228 5% 25%;
++    --sidebar-ring: 21 93% 60%;
++
++    /* Gradient: Persimmon → No Way Rosé */
++    --gradient-start: 21 93% 60%;
++    --gradient-end: 17 87% 78%;
+   }
+ 
+   .dark {
+-    /* Deep Navy #0F172A */
+-    --background: 222 84% 7%;
+-    --foreground: 210 40% 98%;
++    /* 1A1B1E */
++    --background: 228 8% 11%;
++    --foreground: 0 20% 99%;
+ 
+-    --card: 220 70% 10%;
+-    --card-foreground: 210 40% 98%;
++    /* 24252A */
++    --card: 228 7% 16%;
++    --card-foreground: 0 20% 99%;
+ 
+-    --popover: 220 70% 10%;
+-    --popover-foreground: 210 40% 98%;
++    --popover: 228 7% 16%;
++    --popover-foreground: 0 20% 99%;
+ 
+-    /* Accent Blue brighter in dark mode */
+-    --primary: 217 91% 60%;
++    --primary: 21 93% 60%;
+     --primary-foreground: 0 0% 100%;
+ 
+-    --secondary: 220 50% 16%;
+-    --secondary-foreground: 210 40% 98%;
++    --secondary: 228 7% 19%;
++    --secondary-foreground: 300 2% 90%;
+ 
+-    --muted: 220 50% 16%;
+-    --muted-foreground: 215 20% 65%;
++    --muted: 228 7% 19%;
++    --muted-foreground: 0 0% 69%;
+ 
+-    --accent: 220 60% 22%;
+-    --accent-foreground: 199 89% 75%;
++    --accent: 228 5% 25%;
++    --accent-foreground: 17 87% 78%;
+ 
+     --destructive: 0 63% 31%;
+-    --destructive-foreground: 210 40% 98%;
++    --destructive-foreground: 0 20% 99%;
+ 
+     --success: 142 71% 35%;
+-    --success-foreground: 0 0% 100%;
++    --success-foreground: 0 20% 99%;
+ 
+     --warning: 38 92% 40%;
+-    --warning-foreground: 0 0% 100%;
++    --warning-foreground: 0 20% 99%;
+ 
+-    --info: 199 89% 50%;
+-    --info-foreground: 0 0% 100%;
++    --info: 17 71% 26%;
++    --info-foreground: 17 87% 78%;
+ 
+-    --border: 220 50% 16%;
+-    --input: 220 50% 16%;
+-    --ring: 217 91% 60%;
++    --border: 228 5% 25%;
++    --input: 228 5% 25%;
++    --ring: 21 93% 60%;
+ 
+-    --sidebar-background: 222 84% 5%;
+-    --sidebar-foreground: 210 20% 90%;
+-    --sidebar-primary: 217 91% 60%;
++    --sidebar-background: 228 8% 11%;
++    --sidebar-foreground: 0 20% 99%;
++    --sidebar-primary: 21 93% 60%;
+     --sidebar-primary-foreground: 0 0% 100%;
+-    --sidebar-accent: 220 60% 12%;
+-    --sidebar-accent-foreground: 210 20% 90%;
+-    --sidebar-border: 220 50% 10%;
+-    --sidebar-ring: 217 91% 60%;
++    --sidebar-accent: 228 7% 19%;
++    --sidebar-accent-foreground: 0 20% 99%;
++    --sidebar-border: 228 7% 19%;
++    --sidebar-ring: 21 93% 60%;
+ 
+-    --gradient-start: 217 91% 60%;
+-    --gradient-end: 199 89% 55%;
++    --gradient-start: 21 93% 60%;
++    --gradient-end: 17 87% 78%;
+   }
+ }
+ 
+diff --git a/src/pages/AccountSettings.tsx b/src/pages/AccountSettings.tsx
+index 1a2415e..152fb07 100644
+--- a/src/pages/AccountSettings.tsx
++++ b/src/pages/AccountSettings.tsx
+@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
+ import { Input } from '@/components/ui/input';
+ import { Label } from '@/components/ui/label';
+ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
++import { Switch } from '@/components/ui/switch';
+ import { toast } from 'sonner';
+-import { Loader2, User, Mail, Building2, Phone, Lock } from 'lucide-react';
++import { Loader2, User, Mail, Building2, Phone, Lock, Bell } from 'lucide-react';
++import type { NotificationPreferences } from '@/types/database';
+ 
+ const AccountSettings: React.FC = () => {
+   const { profile, refreshProfile, user } = useAuth();
+@@ -25,11 +27,50 @@ const AccountSettings: React.FC = () => {
+     }
+   }, [profile]);
+ 
+-  const [currentPassword, setCurrentPassword] = useState('');
+   const [newPassword, setNewPassword] = useState('');
+   const [confirmPassword, setConfirmPassword] = useState('');
+   const [savingPassword, setSavingPassword] = useState(false);
+ 
++  // Notification preferences
++  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences | null>(null);
++  const [notifLoading, setNotifLoading] = useState(true);
++
++  useEffect(() => {
++    if (user) fetchNotifPrefs();
++  }, [user]);
++
++  const fetchNotifPrefs = async () => {
++    if (!user) return;
++    setNotifLoading(true);
++    const { data } = await supabase
++      .from('notification_preferences')
++      .select('*')
++      .eq('user_id', user.id)
++      .single();
++    setNotifPrefs(data as NotificationPreferences | null);
++    setNotifLoading(false);
++  };
++
++  const toggleNotifPref = async (key: keyof Pick<NotificationPreferences, 'on_expense_submitted' | 'on_expense_approved' | 'on_expense_rejected' | 'on_approval_needed'>) => {
++    if (!notifPrefs || !user) return;
++    const newVal = !notifPrefs[key];
++    // Optimistic update
++    setNotifPrefs({ ...notifPrefs, [key]: newVal });
++
++    const { error } = await supabase
++      .from('notification_preferences')
++      .update({ [key]: newVal })
++      .eq('user_id', user.id);
++
++    if (error) {
++      // Revert on failure
++      setNotifPrefs({ ...notifPrefs, [key]: !newVal });
++      toast.error('Failed to update preference');
++    } else {
++      toast.success('Notification preference updated');
++    }
++  };
++
+   const handleSaveProfile = async () => {
+     if (!user) return;
+     setSavingProfile(true);
+@@ -71,7 +112,6 @@ const AccountSettings: React.FC = () => {
+       toast.error(error.message);
+     } else {
+       toast.success('Password updated successfully');
+-      setCurrentPassword('');
+       setNewPassword('');
+       setConfirmPassword('');
+     }
+@@ -86,10 +126,17 @@ const AccountSettings: React.FC = () => {
+     );
+   }
+ 
++  const notifOptions = [
++    { key: 'on_approval_needed' as const, label: 'When an expense needs my approval', description: 'Get notified when a new expense is assigned to you for review' },
++    { key: 'on_expense_approved' as const, label: 'When my expense is approved', description: 'Get notified when your submitted expense is approved' },
++    { key: 'on_expense_rejected' as const, label: 'When my expense is rejected', description: 'Get notified when your submitted expense is rejected' },
++    { key: 'on_expense_submitted' as const, label: 'When someone submits an expense', description: 'Get notified about new expense submissions in your org' },
++  ];
++
+   return (
+     <div className="max-w-2xl mx-auto space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+           Account Settings
+         </h1>
+         <p className="text-muted-foreground mt-1">Update your personal information and security</p>
+@@ -99,7 +146,7 @@ const AccountSettings: React.FC = () => {
+       <Card>
+         <CardHeader>
+           <div className="flex items-center gap-3">
+-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
++            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+               <User className="w-6 h-6 text-primary-foreground" />
+             </div>
+             <div>
+@@ -144,7 +191,7 @@ const AccountSettings: React.FC = () => {
+             </div>
+           </div>
+ 
+-          <Button onClick={handleSaveProfile} disabled={savingProfile} className="w-full bg-gradient-to-r from-primary to-info">
++          <Button onClick={handleSaveProfile} disabled={savingProfile} className="w-full bg-gradient-to-r from-primary to-accent">
+             {savingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+             Save Profile
+           </Button>
+@@ -179,6 +226,45 @@ const AccountSettings: React.FC = () => {
+           </Button>
+         </CardContent>
+       </Card>
++
++      {/* Email Notifications */}
++      <Card>
++        <CardHeader>
++          <div className="flex items-center gap-3">
++            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-info to-info/70 flex items-center justify-center">
++              <Bell className="w-6 h-6 text-white" />
++            </div>
++            <div>
++              <CardTitle>Email Notifications</CardTitle>
++              <CardDescription>Choose which email notifications you receive</CardDescription>
++            </div>
++          </div>
++        </CardHeader>
++        <CardContent>
++          {notifLoading ? (
++            <div className="flex items-center justify-center py-8">
++              <Loader2 className="h-6 w-6 animate-spin text-primary" />
++            </div>
++          ) : !notifPrefs ? (
++            <p className="text-sm text-muted-foreground py-4">Notification preferences not found. They will be created automatically on next login.</p>
++          ) : (
++            <div className="space-y-1">
++              {notifOptions.map(opt => (
++                <div key={opt.key} className="flex items-center justify-between py-3 border-b last:border-b-0">
++                  <div className="space-y-0.5 pr-4">
++                    <p className="text-sm font-medium">{opt.label}</p>
++                    <p className="text-xs text-muted-foreground">{opt.description}</p>
++                  </div>
++                  <Switch
++                    checked={notifPrefs[opt.key]}
++                    onCheckedChange={() => toggleNotifPref(opt.key)}
++                  />
++                </div>
++              ))}
++            </div>
++          )}
++        </CardContent>
++      </Card>
+     </div>
+   );
+ };
+diff --git a/src/pages/AllExpenses.tsx b/src/pages/AllExpenses.tsx
+index e47c74a..f5e6e70 100644
+--- a/src/pages/AllExpenses.tsx
++++ b/src/pages/AllExpenses.tsx
+@@ -5,7 +5,8 @@ import { Input } from '@/components/ui/input';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+ import { Card, CardContent, CardHeader } from '@/components/ui/card';
+-import { Search } from 'lucide-react';
++import { Badge } from '@/components/ui/badge';
++import { AlertTriangle, Search } from 'lucide-react';
+ import type { ExpenseWithDetails } from '@/types/database';
+ 
+ const AllExpenses: React.FC = () => {
+@@ -55,7 +56,7 @@ const AllExpenses: React.FC = () => {
+   return (
+     <div className="space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">All Expenses</h1>
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">All Expenses</h1>
+         <p className="text-muted-foreground mt-1">Organization-wide expense view</p>
+       </div>
+ 
+@@ -108,7 +109,17 @@ const AllExpenses: React.FC = () => {
+                     {Number(expense.amount).toFixed(2)}
+                     <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
+                   </TableCell>
+-                  <TableCell><StatusBadge status={expense.status} /></TableCell>
++                  <TableCell>
++                    <div className="flex flex-col items-start gap-1">
++                      <StatusBadge status={expense.status} />
++                      {expense.is_policy_exception && (
++                        <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
++                          <AlertTriangle className="mr-1 h-3 w-3" />
++                          Policy exception
++                        </Badge>
++                      )}
++                    </div>
++                  </TableCell>
+                 </TableRow>
+               ))}
+             </TableBody>
+diff --git a/src/pages/Approvals.tsx b/src/pages/Approvals.tsx
+index 76b1677..32bbaa1 100644
+--- a/src/pages/Approvals.tsx
++++ b/src/pages/Approvals.tsx
+@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
+ import { Label } from '@/components/ui/label';
+ import { Textarea } from '@/components/ui/textarea';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
++import { Badge } from '@/components/ui/badge';
+ import { toast } from 'sonner';
+-import { CheckCircle, XCircle, ArrowRight, Search } from 'lucide-react';
++import { AlertTriangle, CheckCircle, XCircle, ArrowRight, Search } from 'lucide-react';
+ import type { ExpenseWithDetails, Profile } from '@/types/database';
+ 
+ const Approvals: React.FC = () => {
+@@ -185,7 +186,7 @@ const Approvals: React.FC = () => {
+   return (
+     <div className="space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">Approvals</h1>
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Approvals</h1>
+         <p className="text-muted-foreground mt-1">Review and approve pending expense requests</p>
+       </div>
+ 
+@@ -227,7 +228,17 @@ const Approvals: React.FC = () => {
+                     {Number(expense.amount).toFixed(2)}
+                     <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
+                   </TableCell>
+-                  <TableCell><StatusBadge status={expense.status} /></TableCell>
++                  <TableCell>
++                    <div className="flex flex-col items-start gap-1">
++                      <StatusBadge status={expense.status} />
++                      {expense.is_policy_exception && (
++                        <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
++                          <AlertTriangle className="mr-1 h-3 w-3" />
++                          Policy exception
++                        </Badge>
++                      )}
++                    </div>
++                  </TableCell>
+                   <TableCell>
+                     <div className="flex gap-1">
+                       <Button size="sm" variant="ghost" className="text-success" onClick={() => openAction(expense, 'approve')}>
+@@ -261,6 +272,12 @@ const Approvals: React.FC = () => {
+                   {Number(actionExpense.amount).toFixed(2)} {actionExpense.currency}
+                 </p>
+                 <p className="text-sm text-muted-foreground">{actionExpense.description}</p>
++                {actionExpense.is_policy_exception && (
++                  <Badge variant="outline" className="mt-2 bg-warning/15 text-warning border-warning/30">
++                    <AlertTriangle className="mr-1 h-3 w-3" />
++                    Policy exception
++                  </Badge>
++                )}
+               </div>
+             )}
+             {actionType === 'reassign' && (
+@@ -281,7 +298,7 @@ const Approvals: React.FC = () => {
+               <Textarea value={comments} onChange={e => setComments(e.target.value)} placeholder="Add comments..." />
+             </div>
+             <Button
+-              className={`w-full ${actionType === 'reject' ? 'bg-destructive hover:bg-destructive/90' : 'bg-gradient-to-r from-primary to-info'}`}
++              className={`w-full ${actionType === 'reject' ? 'bg-destructive hover:bg-destructive/90' : 'bg-gradient-to-r from-primary to-accent'}`}
+               onClick={() => {
+                 if (!actionExpense) return;
+                 if (actionType === 'approve') handleApprove(actionExpense);
+diff --git a/src/pages/Dashboard.tsx b/src/pages/Dashboard.tsx
+index 55f25c1..f0f0190 100644
+--- a/src/pages/Dashboard.tsx
++++ b/src/pages/Dashboard.tsx
+@@ -1,15 +1,19 @@
+ import React, { useEffect, useState } from 'react';
++import { useNavigate } from 'react-router-dom';
+ import { useAuth } from '@/contexts/AuthContext';
+ import { supabase } from '@/integrations/supabase/client';
+ import { StatsCard } from '@/components/StatsCard';
++import { Button } from '@/components/ui/button';
+ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+-import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText } from 'lucide-react';
++import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receipt, Plus } from 'lucide-react';
+ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+ import type { OrgCurrency } from '@/types/database';
+ 
++
+ const COLORS = ['hsl(262, 83%, 58%)', 'hsl(38, 92%, 50%)', 'hsl(142, 71%, 45%)', 'hsl(0, 84%, 60%)'];
+ 
+ const Dashboard: React.FC = () => {
++  const navigate = useNavigate();
+   const { user, profile, hasRole, hasAnyRole, isManager } = useAuth();
+   const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, totalAmount: 0 });
+   const [monthlyData, setMonthlyData] = useState<any[]>([]);
+@@ -83,7 +87,7 @@ const Dashboard: React.FC = () => {
+   return (
+     <div className="space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+           {isAdmin ? 'Organization Dashboard' : isManager ? 'Team Dashboard' : 'My Dashboard'}
+         </h1>
+         <p className="text-muted-foreground mt-1">
+@@ -91,91 +95,115 @@ const Dashboard: React.FC = () => {
+         </p>
+       </div>
+ 
+-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+-        <StatsCard
+-          title="Total Expenses"
+-          value={stats.total}
+-          icon={FileText}
+-          iconClassName="bg-gradient-to-br from-primary to-info"
+-        />
+-        <StatsCard
+-          title="Total Amount"
+-          value={`${defaultCurrSymbol}${stats.totalAmount.toLocaleString()}`}
+-          icon={Coins}
+-          iconClassName="bg-gradient-to-br from-success to-success/70"
+-        />
+-        <StatsCard
+-          title="Pending"
+-          value={stats.pending}
+-          icon={Clock}
+-          iconClassName="bg-gradient-to-br from-warning to-warning/70"
+-        />
+-        <StatsCard
+-          title="Approved"
+-          value={stats.approved}
+-          icon={CheckCircle}
+-          iconClassName="bg-gradient-to-br from-success to-success/70"
+-        />
+-      </div>
+-
+-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+-        <Card>
+-          <CardHeader>
+-            <CardTitle className="text-lg">Monthly Expense Trend</CardTitle>
+-          </CardHeader>
+-          <CardContent>
+-            {monthlyData.length > 0 ? (
+-              <ResponsiveContainer width="100%" height={300}>
+-                <BarChart data={monthlyData}>
+-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+-                  <XAxis dataKey="name" className="text-xs" />
+-                  <YAxis className="text-xs" />
+-                  <Tooltip />
+-                  <Bar dataKey="amount" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
+-                </BarChart>
+-              </ResponsiveContainer>
+-            ) : (
+-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+-                No expense data yet
+-              </div>
+-            )}
++      {!loading && stats.total === 0 ? (
++        <Card className="max-w-md mx-auto mt-12">
++          <CardContent className="flex flex-col items-center text-center py-12 px-6">
++            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/10 to-info/10 flex items-center justify-center mb-4">
++              <Receipt className="w-8 h-8 text-primary" />
++            </div>
++            <h2 className="text-xl font-semibold mb-2">No expenses yet</h2>
++            <p className="text-muted-foreground text-sm mb-6">
++              Get started by submitting your first expense report. It only takes a minute.
++            </p>
++            <Button
++              className="bg-gradient-to-r from-primary to-accent"
++              onClick={() => navigate('/app/submit')}
++            >
++              <Plus className="w-4 h-4 mr-2" />
++              Submit your first expense
++            </Button>
+           </CardContent>
+         </Card>
++      ) : (
++        <>
++          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
++            <StatsCard
++              title="Total Expenses"
++              value={stats.total}
++              icon={FileText}
++              iconClassName="bg-gradient-to-br from-primary to-accent"
++            />
++            <StatsCard
++              title="Total Amount"
++              value={`${defaultCurrSymbol}${stats.totalAmount.toLocaleString()}`}
++              icon={Coins}
++              iconClassName="bg-gradient-to-br from-success to-success/70"
++            />
++            <StatsCard
++              title="Pending"
++              value={stats.pending}
++              icon={Clock}
++              iconClassName="bg-gradient-to-br from-warning to-warning/70"
++            />
++            <StatsCard
++              title="Approved"
++              value={stats.approved}
++              icon={CheckCircle}
++              iconClassName="bg-gradient-to-br from-success to-success/70"
++            />
++          </div>
++
++          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
++            <Card>
++              <CardHeader>
++                <CardTitle className="text-lg">Monthly Expense Trend</CardTitle>
++              </CardHeader>
++              <CardContent>
++                {monthlyData.length > 0 ? (
++                  <ResponsiveContainer width="100%" height={300}>
++                    <BarChart data={monthlyData}>
++                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
++                      <XAxis dataKey="name" className="text-xs" />
++                      <YAxis className="text-xs" />
++                      <Tooltip />
++                      <Bar dataKey="amount" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
++                    </BarChart>
++                  </ResponsiveContainer>
++                ) : (
++                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
++                    No expense data yet
++                  </div>
++                )}
++              </CardContent>
++            </Card>
+ 
+-        <Card>
+-          <CardHeader>
+-            <CardTitle className="text-lg">Status Breakdown</CardTitle>
+-          </CardHeader>
+-          <CardContent>
+-            {pieData.length > 0 ? (
+-              <ResponsiveContainer width="100%" height={300}>
+-                <PieChart>
+-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+-                    {pieData.map((_, index) => (
+-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+-                    ))}
+-                  </Pie>
+-                  <Tooltip />
+-                </PieChart>
+-              </ResponsiveContainer>
+-            ) : (
+-              <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+-                No expense data yet
+-              </div>
+-            )}
+-            <div className="flex justify-center gap-4 mt-2">
+-              {pieData.map((item, i) => (
+-                <div key={item.name} className="flex items-center gap-2">
+-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+-                  <span className="text-sm text-muted-foreground">{item.name}: {item.value}</span>
++            <Card>
++              <CardHeader>
++                <CardTitle className="text-lg">Status Breakdown</CardTitle>
++              </CardHeader>
++              <CardContent>
++                {pieData.length > 0 ? (
++                  <ResponsiveContainer width="100%" height={300}>
++                    <PieChart>
++                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
++                        {pieData.map((_, index) => (
++                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
++                        ))}
++                      </Pie>
++                      <Tooltip />
++                    </PieChart>
++                  </ResponsiveContainer>
++                ) : (
++                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
++                    No expense data yet
++                  </div>
++                )}
++                <div className="flex justify-center gap-4 mt-2">
++                  {pieData.map((item, i) => (
++                    <div key={item.name} className="flex items-center gap-2">
++                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
++                      <span className="text-sm text-muted-foreground">{item.name}: {item.value}</span>
++                    </div>
++                  ))}
+                 </div>
+-              ))}
+-            </div>
+-          </CardContent>
+-        </Card>
+-      </div>
++              </CardContent>
++            </Card>
++          </div>
++        </>
++      )}
+     </div>
+   );
+ };
+ 
+ export default Dashboard;
++
+diff --git a/src/pages/Help.tsx b/src/pages/Help.tsx
+index b7dbb30..f777866 100644
+--- a/src/pages/Help.tsx
++++ b/src/pages/Help.tsx
+@@ -6,7 +6,7 @@ const Help: React.FC = () => {
+   return (
+     <div className="max-w-2xl mx-auto space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+           Help & Support
+         </h1>
+         <p className="text-muted-foreground mt-1">Find answers and get assistance</p>
+@@ -15,7 +15,7 @@ const Help: React.FC = () => {
+       <Card>
+         <CardHeader>
+           <div className="flex items-center gap-3">
+-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
++            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+               <FileText className="w-6 h-6 text-primary-foreground" />
+             </div>
+             <div>
+diff --git a/src/pages/Landing.tsx b/src/pages/Landing.tsx
+index 91c23ba..32d7e23 100644
+--- a/src/pages/Landing.tsx
++++ b/src/pages/Landing.tsx
+@@ -20,7 +20,7 @@ const Landing: React.FC = () => {
+         </p>
+ 
+         <div className="mt-10 flex w-full max-w-xl flex-col gap-3 sm:flex-row">
+-          <Button asChild size="lg" className="h-12 flex-1 bg-gradient-to-r from-primary to-info text-base">
++          <Button asChild size="lg" className="h-12 flex-1 bg-gradient-to-r from-primary to-accent text-base">
+             <Link to="/create-organization">
+               Create Organization
+               <ArrowRight className="ml-2 h-4 w-4" />
+diff --git a/src/pages/Login.tsx b/src/pages/Login.tsx
+index dcb026c..c4c2b2c 100644
+--- a/src/pages/Login.tsx
++++ b/src/pages/Login.tsx
+@@ -85,7 +85,7 @@ const Login: React.FC = () => {
+             </div>
+             <Button
+               type="submit"
+-              className="w-full bg-gradient-to-r from-primary to-info"
++              className="w-full bg-gradient-to-r from-primary to-accent"
+               disabled={loading || !isSupabaseConfigured}
+             >
+               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+diff --git a/src/pages/MyExpenses.tsx b/src/pages/MyExpenses.tsx
+index 909d57e..6e949aa 100644
+--- a/src/pages/MyExpenses.tsx
++++ b/src/pages/MyExpenses.tsx
+@@ -98,7 +98,7 @@ const MyExpenses: React.FC = () => {
+   return (
+     <div className="space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">My Expenses</h1>
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">My Expenses</h1>
+         <p className="text-muted-foreground mt-1">View and manage your submitted expenses</p>
+       </div>
+ 
+@@ -203,7 +203,7 @@ const MyExpenses: React.FC = () => {
+               <Label>Description</Label>
+               <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} />
+             </div>
+-            <Button onClick={handleEdit} className="w-full bg-gradient-to-r from-primary to-info">Save Changes</Button>
++            <Button onClick={handleEdit} className="w-full bg-gradient-to-r from-primary to-accent">Save Changes</Button>
+           </div>
+         </DialogContent>
+       </Dialog>
+diff --git a/src/pages/OrgSettings.tsx b/src/pages/OrgSettings.tsx
+index 635f867..ec10217 100644
+--- a/src/pages/OrgSettings.tsx
++++ b/src/pages/OrgSettings.tsx
+@@ -10,13 +10,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
+ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+ import { Badge } from '@/components/ui/badge';
+ import { Switch } from '@/components/ui/switch';
++import { Progress } from '@/components/ui/progress';
+ import { toast } from 'sonner';
+-import { Building2, Coins, Tags, Loader2, Plus, Pencil, Trash2 } from 'lucide-react';
+-import type { Organization, ExpenseCategory, OrgCurrency } from '@/types/database';
++import { Building2, Coins, Tags, Loader2, Plus, Pencil, Trash2, CreditCard, Zap, Crown, Users, Receipt, Check } from 'lucide-react';
++import { usePlanLimit } from '@/hooks/usePlanLimit';
++import type { Organization, ExpenseCategory, OrgCurrency, PlanType, CategoryLimit } from '@/types/database';
++
++const planBadgeStyles: Record<PlanType, string> = {
++  free: 'bg-muted text-muted-foreground border-muted-foreground/30',
++  pro: 'bg-primary/15 text-primary border-primary/30',
++  enterprise: 'bg-gradient-to-r from-primary/15 to-info/15 text-primary border-primary/30',
++};
+ 
+ const OrgSettings: React.FC = () => {
+-  const { organization, refreshOrg, profile } = useAuth();
++  const { organization, refreshOrg, profile, hasRole } = useAuth();
+   const [activeTab, setActiveTab] = useState('general');
++  const billing = usePlanLimit();
++  const [checkoutLoading, setCheckoutLoading] = useState<'pro' | 'enterprise' | null>(null);
+ 
+   // General
+   const [orgName, setOrgName] = useState('');
+@@ -27,9 +37,12 @@ const OrgSettings: React.FC = () => {
+ 
+   // Categories
+   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
++  const [categoryLimits, setCategoryLimits] = useState<Record<string, CategoryLimit>>({});
+   const [catDialogOpen, setCatDialogOpen] = useState(false);
+   const [editingCat, setEditingCat] = useState<ExpenseCategory | null>(null);
+   const [catName, setCatName] = useState('');
++  const [catMonthlyLimit, setCatMonthlyLimit] = useState('');
++  const [catPerExpenseLimit, setCatPerExpenseLimit] = useState('');
+ 
+   // Currencies
+   const [currencies, setCurrencies] = useState<OrgCurrency[]>([]);
+@@ -39,6 +52,9 @@ const OrgSettings: React.FC = () => {
+   const [currSymbol, setCurrSymbol] = useState('');
+   const [currName, setCurrName] = useState('');
+ 
++  // Derived default currency symbol for limit display
++  const defaultCurrSymbol = currencies.find(c => c.is_default)?.symbol || '₹';
++
+   useEffect(() => {
+     if (organization) {
+       setOrgName(organization.name);
+@@ -61,6 +77,17 @@ const OrgSettings: React.FC = () => {
+       .eq('org_id', profile.org_id)
+       .order('name');
+     if (data) setCategories(data as ExpenseCategory[]);
++
++    // Fetch limits
++    const { data: limitsData } = await supabase
++      .from('category_limits')
++      .select('*')
++      .eq('org_id', profile.org_id);
++    if (limitsData) {
++      const map: Record<string, CategoryLimit> = {};
++      (limitsData as CategoryLimit[]).forEach(l => { map[l.category_id] = l; });
++      setCategoryLimits(map);
++    }
+   };
+ 
+   const fetchCurrencies = async () => {
+@@ -101,25 +128,59 @@ const OrgSettings: React.FC = () => {
+   const openCatDialog = (cat?: ExpenseCategory) => {
+     setEditingCat(cat || null);
+     setCatName(cat?.name || '');
++    const lim = cat ? categoryLimits[cat.id] : undefined;
++    setCatMonthlyLimit(lim?.monthly_limit != null ? String(lim.monthly_limit) : '');
++    setCatPerExpenseLimit(lim?.per_expense_limit != null ? String(lim.per_expense_limit) : '');
+     setCatDialogOpen(true);
+   };
+ 
+   const saveCat = async () => {
+     if (!catName.trim() || !profile?.org_id) return;
++    let catId = editingCat?.id;
+     if (editingCat) {
+       const { error } = await supabase
+         .from('expense_categories')
+         .update({ name: catName.trim() })
+         .eq('id', editingCat.id);
+       if (error) { toast.error(error.message); return; }
+-      toast.success('Category updated');
+     } else {
+-      const { error } = await supabase
++      const { data: newCat, error } = await supabase
+         .from('expense_categories')
+-        .insert({ org_id: profile.org_id, name: catName.trim() });
++        .insert({ org_id: profile.org_id, name: catName.trim() })
++        .select('id')
++        .single();
+       if (error) { toast.error(error.message); return; }
+-      toast.success('Category created');
++      catId = newCat?.id;
++    }
++
++    // Upsert category limits
++    if (catId) {
++      const monthlyVal = catMonthlyLimit.trim() ? parseFloat(catMonthlyLimit) : null;
++      const perExpVal = catPerExpenseLimit.trim() ? parseFloat(catPerExpenseLimit) : null;
++
++      if (monthlyVal !== null || perExpVal !== null) {
++        const { error: limitError } = await supabase
++          .from('category_limits')
++          .upsert({
++            org_id: profile.org_id,
++            category_id: catId,
++            monthly_limit: monthlyVal,
++            per_expense_limit: perExpVal,
++            updated_at: new Date().toISOString(),
++          }, { onConflict: 'category_id' });
++        if (limitError) { toast.error(limitError.message); return; }
++      } else if (categoryLimits[catId]) {
++        // Remove limits if both cleared
++        const { error: limitError } = await supabase
++          .from('category_limits')
++          .delete()
++          .eq('category_id', catId)
++          .eq('org_id', profile.org_id);
++        if (limitError) { toast.error(limitError.message); return; }
++      }
+     }
++
++    toast.success(editingCat ? 'Category updated' : 'Category created');
+     setCatDialogOpen(false);
+     fetchCategories();
+   };
+@@ -193,10 +254,50 @@ const OrgSettings: React.FC = () => {
+     fetchCurrencies();
+   };
+ 
++  const handleUpgrade = async (plan: 'pro' | 'enterprise') => {
++    if (!organization) return;
++    setCheckoutLoading(plan);
++    try {
++      const { data, error } = await supabase.functions.invoke('create-checkout', {
++        body: { plan, org_id: organization.id },
++      });
++
++      if (error) {
++        let detail = '';
++        try {
++          if ((error as any).context) {
++            const res = (error as any).context as Response;
++            const body = await res.json();
++            detail = body?.error || '';
++          }
++        } catch { /* ignore parse errors */ }
++        throw new Error(detail || error.message);
++      }
++      if (data?.error) throw new Error(data.error);
++
++      if (data?.url) {
++        window.location.href = data.url;
++      } else {
++        throw new Error('No checkout URL returned');
++      }
++    } catch (error: unknown) {
++      const message = error instanceof Error ? error.message : 'Failed to start checkout';
++      toast.error(message);
++    } finally {
++      setCheckoutLoading(null);
++    }
++  };
++
++  const usagePercent = (current: number, max: number) => {
++    if (max === -1) return 0; // unlimited
++    if (max === 0) return 100;
++    return Math.min(Math.round((current / max) * 100), 100);
++  };
++
+   return (
+     <div className="space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+           Organization Settings
+         </h1>
+         <p className="text-muted-foreground mt-1">
+@@ -205,7 +306,7 @@ const OrgSettings: React.FC = () => {
+       </div>
+ 
+       <Tabs value={activeTab} onValueChange={setActiveTab}>
+-        <TabsList className="grid w-full grid-cols-3 max-w-md">
++        <TabsList className="grid w-full grid-cols-4 max-w-lg">
+           <TabsTrigger value="general" className="flex items-center gap-1.5">
+             <Building2 className="h-4 w-4" /> General
+           </TabsTrigger>
+@@ -215,6 +316,9 @@ const OrgSettings: React.FC = () => {
+           <TabsTrigger value="currencies" className="flex items-center gap-1.5">
+             <Coins className="h-4 w-4" /> Currencies
+           </TabsTrigger>
++          <TabsTrigger value="billing" className="flex items-center gap-1.5">
++            <CreditCard className="h-4 w-4" /> Billing
++          </TabsTrigger>
+         </TabsList>
+ 
+         {/* ---- General ---- */}
+@@ -244,7 +348,7 @@ const OrgSettings: React.FC = () => {
+                   <Input value={bizPhone} onChange={e => setBizPhone(e.target.value)} />
+                 </div>
+               </div>
+-              <Button onClick={saveGeneral} disabled={savingGeneral} className="bg-gradient-to-r from-primary to-info">
++              <Button onClick={saveGeneral} disabled={savingGeneral} className="bg-gradient-to-r from-primary to-accent">
+                 {savingGeneral && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                 Save Changes
+               </Button>
+@@ -260,7 +364,7 @@ const OrgSettings: React.FC = () => {
+                 <CardTitle>Expense Categories</CardTitle>
+                 <CardDescription>Create and manage expense types for your organization</CardDescription>
+               </div>
+-              <Button size="sm" onClick={() => openCatDialog()} className="bg-gradient-to-r from-primary to-info">
++              <Button size="sm" onClick={() => openCatDialog()} className="bg-gradient-to-r from-primary to-accent">
+                 <Plus className="h-4 w-4 mr-1" /> Add Category
+               </Button>
+             </CardHeader>
+@@ -269,14 +373,33 @@ const OrgSettings: React.FC = () => {
+                 <TableHeader>
+                   <TableRow>
+                     <TableHead>Name</TableHead>
++                    <TableHead>Limit</TableHead>
+                     <TableHead>Status</TableHead>
+                     <TableHead>Actions</TableHead>
+                   </TableRow>
+                 </TableHeader>
+                 <TableBody>
+-                  {categories.map(cat => (
++                  {categories.map(cat => {
++                    const lim = categoryLimits[cat.id];
++                    const hasLimits = lim?.per_expense_limit != null || lim?.monthly_limit != null;
++                    return (
+                     <TableRow key={cat.id}>
+                       <TableCell className="font-medium">{cat.name}</TableCell>
++                      <TableCell>
++                        <div className="flex flex-wrap gap-1">
++                          {lim?.per_expense_limit != null && (
++                            <Badge variant="outline" className="text-xs bg-primary/5 border-primary/20">
++                              {defaultCurrSymbol}{Number(lim.per_expense_limit).toLocaleString()}/exp
++                            </Badge>
++                          )}
++                          {lim?.monthly_limit != null && (
++                            <Badge variant="outline" className="text-xs bg-info/5 border-info/20">
++                              {defaultCurrSymbol}{Number(lim.monthly_limit).toLocaleString()}/mo
++                            </Badge>
++                          )}
++                          {!hasLimits && <span className="text-xs text-muted-foreground">—</span>}
++                        </div>
++                      </TableCell>
+                       <TableCell>
+                         <div className="flex items-center gap-2">
+                           <Switch checked={cat.is_active} onCheckedChange={() => toggleCat(cat)} />
+@@ -296,10 +419,11 @@ const OrgSettings: React.FC = () => {
+                         </div>
+                       </TableCell>
+                     </TableRow>
+-                  ))}
++                    );
++                  })}
+                   {categories.length === 0 && (
+                     <TableRow>
+-                      <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
++                      <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                         No categories yet. Click "Add Category" to create one.
+                       </TableCell>
+                     </TableRow>
+@@ -318,7 +442,7 @@ const OrgSettings: React.FC = () => {
+                 <CardTitle>Currencies</CardTitle>
+                 <CardDescription>Define which currencies your organization uses</CardDescription>
+               </div>
+-              <Button size="sm" onClick={() => openCurrDialog()} className="bg-gradient-to-r from-primary to-info">
++              <Button size="sm" onClick={() => openCurrDialog()} className="bg-gradient-to-r from-primary to-accent">
+                 <Plus className="h-4 w-4 mr-1" /> Add Currency
+               </Button>
+             </CardHeader>
+@@ -374,6 +498,143 @@ const OrgSettings: React.FC = () => {
+             </CardContent>
+           </Card>
+         </TabsContent>
++
++        {/* ---- Billing ---- */}
++        <TabsContent value="billing">
++          {billing.isLoading ? (
++            <div className="flex items-center justify-center py-12">
++              <Loader2 className="h-8 w-8 animate-spin text-primary" />
++            </div>
++          ) : (
++            <div className="space-y-6">
++              {/* Current Plan */}
++              <Card>
++                <CardHeader>
++                  <CardTitle className="flex items-center gap-2">
++                    {billing.plan === 'enterprise' ? <Crown className="h-5 w-5 text-primary" /> : billing.plan === 'pro' ? <Zap className="h-5 w-5 text-primary" /> : <CreditCard className="h-5 w-5" />}
++                    Current Plan
++                  </CardTitle>
++                  <CardDescription>Your organization's subscription details</CardDescription>
++                </CardHeader>
++                <CardContent className="space-y-4">
++                  <div className="flex items-center gap-3">
++                    <Badge variant="outline" className={`text-sm px-3 py-1 ${planBadgeStyles[billing.plan]}`}>
++                      {billing.plan.charAt(0).toUpperCase() + billing.plan.slice(1)}
++                    </Badge>
++                    {billing.subscription?.status && billing.subscription.status !== 'active' && (
++                      <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
++                        {billing.subscription.status}
++                      </Badge>
++                    )}
++                  </div>
++                  {billing.subscription?.current_period_end && billing.plan !== 'free' && (
++                    <p className="text-sm text-muted-foreground">
++                      {billing.subscription.status === 'canceling' ? 'Access until' : 'Renews on'}{' '}
++                      <span className="font-medium text-foreground">
++                        {new Date(billing.subscription.current_period_end).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
++                      </span>
++                    </p>
++                  )}
++                </CardContent>
++              </Card>
++
++              {/* Usage */}
++              <Card>
++                <CardHeader>
++                  <CardTitle>Usage</CardTitle>
++                  <CardDescription>Current usage against your plan limits</CardDescription>
++                </CardHeader>
++                <CardContent className="space-y-6">
++                  <div className="space-y-2">
++                    <div className="flex items-center justify-between text-sm">
++                      <span className="flex items-center gap-2"><Users className="h-4 w-4" /> Users</span>
++                      <span className="font-medium">
++                        {billing.userCount} / {billing.limits?.max_users === -1 ? '∞' : billing.limits?.max_users ?? '–'}
++                      </span>
++                    </div>
++                    <Progress
++                      value={usagePercent(billing.userCount, billing.limits?.max_users ?? 5)}
++                      className="h-2"
++                    />
++                    {billing.userLimitReached && (
++                      <p className="text-xs text-destructive">User limit reached. Upgrade your plan to add more users.</p>
++                    )}
++                  </div>
++                  <div className="space-y-2">
++                    <div className="flex items-center justify-between text-sm">
++                      <span className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Expenses this month</span>
++                      <span className="font-medium">
++                        {billing.expenseCount} / {billing.limits?.max_expenses_per_month === -1 ? '∞' : billing.limits?.max_expenses_per_month ?? '–'}
++                      </span>
++                    </div>
++                    <Progress
++                      value={usagePercent(billing.expenseCount, billing.limits?.max_expenses_per_month ?? 50)}
++                      className="h-2"
++                    />
++                    {billing.expenseLimitReached && (
++                      <p className="text-xs text-destructive">Monthly expense limit reached. Upgrade to submit more.</p>
++                    )}
++                  </div>
++                </CardContent>
++              </Card>
++
++              {/* Upgrade Options */}
++              {billing.plan !== 'enterprise' && hasRole('admin') && (
++                <div className="grid gap-6 md:grid-cols-2">
++                  {billing.plan === 'free' && (
++                    <Card className="border-primary/30">
++                      <CardHeader>
++                        <CardTitle className="flex items-center gap-2">
++                          <Zap className="h-5 w-5 text-primary" /> Pro
++                        </CardTitle>
++                        <CardDescription>For growing teams that need more power</CardDescription>
++                      </CardHeader>
++                      <CardContent className="space-y-4">
++                        <ul className="space-y-2 text-sm">
++                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Up to 50 users</li>
++                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited expenses</li>
++                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
++                        </ul>
++                        <Button
++                          onClick={() => handleUpgrade('pro')}
++                          disabled={checkoutLoading !== null}
++                          className="w-full bg-gradient-to-r from-primary to-accent"
++                        >
++                          {checkoutLoading === 'pro' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
++                          Upgrade to Pro
++                        </Button>
++                      </CardContent>
++                    </Card>
++                  )}
++                  <Card className="border-primary/30">
++                    <CardHeader>
++                      <CardTitle className="flex items-center gap-2">
++                        <Crown className="h-5 w-5 text-primary" /> Enterprise
++                      </CardTitle>
++                      <CardDescription>Unlimited everything for large organizations</CardDescription>
++                    </CardHeader>
++                    <CardContent className="space-y-4">
++                      <ul className="space-y-2 text-sm">
++                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited users</li>
++                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited expenses</li>
++                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
++                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> API access</li>
++                      </ul>
++                      <Button
++                        onClick={() => handleUpgrade('enterprise')}
++                        disabled={checkoutLoading !== null}
++                        className="w-full bg-gradient-to-r from-primary to-accent"
++                      >
++                        {checkoutLoading === 'enterprise' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
++                        Upgrade to Enterprise
++                      </Button>
++                    </CardContent>
++                  </Card>
++                </div>
++              )}
++            </div>
++          )}
++        </TabsContent>
+       </Tabs>
+ 
+       {/* Category Dialog */}
+@@ -387,7 +648,33 @@ const OrgSettings: React.FC = () => {
+               <Label>Category Name</Label>
+               <Input value={catName} onChange={e => setCatName(e.target.value)} placeholder="e.g. Travel" />
+             </div>
+-            <Button onClick={saveCat} className="w-full bg-gradient-to-r from-primary to-info">
++            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
++              <div className="space-y-2">
++                <Label>Monthly limit</Label>
++                <Input
++                  type="number"
++                  step="0.01"
++                  min="0"
++                  value={catMonthlyLimit}
++                  onChange={e => setCatMonthlyLimit(e.target.value)}
++                  placeholder="No limit"
++                />
++                <p className="text-xs text-muted-foreground">Max total spend per month</p>
++              </div>
++              <div className="space-y-2">
++                <Label>Per-expense limit</Label>
++                <Input
++                  type="number"
++                  step="0.01"
++                  min="0"
++                  value={catPerExpenseLimit}
++                  onChange={e => setCatPerExpenseLimit(e.target.value)}
++                  placeholder="No limit"
++                />
++                <p className="text-xs text-muted-foreground">Max amount per single expense</p>
++              </div>
++            </div>
++            <Button onClick={saveCat} className="w-full bg-gradient-to-r from-primary to-accent">
+               {editingCat ? 'Update' : 'Create'} Category
+             </Button>
+           </div>
+@@ -415,7 +702,7 @@ const OrgSettings: React.FC = () => {
+               <Label>Currency Name</Label>
+               <Input value={currName} onChange={e => setCurrName(e.target.value)} placeholder="US Dollar" />
+             </div>
+-            <Button onClick={saveCurr} className="w-full bg-gradient-to-r from-primary to-info">
++            <Button onClick={saveCurr} className="w-full bg-gradient-to-r from-primary to-accent">
+               {editingCurr ? 'Update' : 'Add'} Currency
+             </Button>
+           </div>
+diff --git a/src/pages/OrganizationProfile.tsx b/src/pages/OrganizationProfile.tsx
+index 5b34a48..6659e3b 100644
+--- a/src/pages/OrganizationProfile.tsx
++++ b/src/pages/OrganizationProfile.tsx
+@@ -1,16 +1,24 @@
+ import React, { useEffect, useMemo, useState } from "react";
+ import { useNavigate } from "react-router-dom";
+-import { ArrowRight, Building2, Loader2, ShieldCheck } from "lucide-react";
++import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Loader2, Mail, Plus, Rocket, ShieldCheck, Trash2, Users, XCircle } from "lucide-react";
+ import { Button } from "@/components/ui/button";
+ import { Input } from "@/components/ui/input";
+ import { Label } from "@/components/ui/label";
++import { Card, CardContent } from "@/components/ui/card";
++import { Badge } from "@/components/ui/badge";
++import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+ import { toast } from "sonner";
+ import { isSupabaseConfigured, supabase } from "@/integrations/supabase/client";
+ import { useAuth } from "@/contexts/AuthContext";
++import type { AppRole } from "@/types/database";
+ 
+-type FormErrors = Partial<Record<keyof FormState, string>>;
++/* ------------------------------------------------------------------ */
++/* Types                                                               */
++/* ------------------------------------------------------------------ */
+ 
+-interface FormState {
++type FormErrors = Partial<Record<keyof OrgForm, string>>;
++
++interface OrgForm {
+   companyName: string;
+   companySlug: string;
+   corporateEmail: string;
+@@ -22,7 +30,14 @@ interface FormState {
+   confirmPassword: string;
+ }
+ 
+-const initialForm: FormState = {
++interface InviteRow {
++  name: string;
++  email: string;
++  role: AppRole;
++  status: "idle" | "sending" | "sent" | "failed";
++}
++
++const initialForm: OrgForm = {
+   companyName: "",
+   companySlug: "",
+   corporateEmail: "",
+@@ -34,38 +49,92 @@ const initialForm: FormState = {
+   confirmPassword: "",
+ };
+ 
++const emptyInvite = (): InviteRow => ({ name: "", email: "", role: "employee", status: "idle" });
++
+ const slugify = (value: string) =>
+-  value
+-    .trim()
+-    .toLowerCase()
+-    .replace(/[^a-z0-9- ]/g, "")
+-    .replace(/\s+/g, "-")
+-    .replace(/-+/g, "-")
+-    .replace(/^-|-$/g, "");
++  value.trim().toLowerCase().replace(/[^a-z0-9- ]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
++
++/* ------------------------------------------------------------------ */
++/* Step Indicator                                                      */
++/* ------------------------------------------------------------------ */
++
++const StepIndicator: React.FC<{ current: number }> = ({ current }) => {
++  const steps = [
++    { num: 1, label: "Organization" },
++    { num: 2, label: "Invite Team" },
++    { num: 3, label: "All Set" },
++  ];
++
++  return (
++    <div className="flex items-center justify-center mb-8">
++      {steps.map((step, i) => (
++        <React.Fragment key={step.num}>
++          <div className="flex flex-col items-center">
++            <div
++              className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all
++                ${current > step.num
++                  ? "bg-primary text-primary-foreground"
++                  : current === step.num
++                    ? "bg-gradient-to-br from-primary to-accent text-white shadow-lg shadow-primary/25"
++                    : "bg-muted text-muted-foreground"
++                }`}
++            >
++              {current > step.num ? <Check className="w-4 h-4" /> : step.num}
++            </div>
++            <span className={`text-xs mt-1.5 font-medium ${current >= step.num ? "text-foreground" : "text-muted-foreground"}`}>
++              {step.label}
++            </span>
++          </div>
++          {i < steps.length - 1 && (
++            <div className={`w-16 sm:w-24 h-0.5 mx-2 mb-5 transition-colors ${current > step.num ? "bg-primary" : "bg-muted"}`} />
++          )}
++        </React.Fragment>
++      ))}
++    </div>
++  );
++};
++
++/* ------------------------------------------------------------------ */
++/* Main Component                                                      */
++/* ------------------------------------------------------------------ */
+ 
+ const OrganizationProfile: React.FC = () => {
+   const navigate = useNavigate();
+   const { user, reloadAll } = useAuth();
+-  const [form, setForm] = useState<FormState>(initialForm);
++
++  const [step, setStep] = useState(1);
++  const [form, setForm] = useState<OrgForm>(initialForm);
+   const [errors, setErrors] = useState<FormErrors>({});
+   const [slugEdited, setSlugEdited] = useState(false);
+   const [submitting, setSubmitting] = useState(false);
++  const [orgId, setOrgId] = useState<string | null>(null);
+ 
++  // Step 2 — invites
++  const [invites, setInvites] = useState<InviteRow[]>([emptyInvite()]);
++  const [inviteSending, setInviteSending] = useState(false);
++  const [invitesSentCount, setInvitesSentCount] = useState(0);
++
++  /* ---- slug auto-derive ---- */
+   useEffect(() => {
+     if (!slugEdited) {
+       setForm((prev) => ({ ...prev, companySlug: slugify(prev.companyName) }));
+     }
+   }, [form.companyName, slugEdited]);
+ 
+-  const onChange = (field: keyof FormState) => (event: React.ChangeEvent<HTMLInputElement>) => {
++  const onChange = (field: keyof OrgForm) => (event: React.ChangeEvent<HTMLInputElement>) => {
+     const value = event.target.value;
+     setForm((prev) => ({ ...prev, [field]: value }));
+     setErrors((prev) => ({ ...prev, [field]: undefined }));
+   };
+ 
+-  const validate = (): FormErrors => {
+-    const nextErrors: FormErrors = {};
++  const required = useMemo(
++    () => ({ className: "after:ml-1 after:text-red-500 after:content-['*']" }),
++    [],
++  );
+ 
++  /* ---- Step 1 validation ---- */
++  const validateStep1 = (): FormErrors => {
++    const nextErrors: FormErrors = {};
+     if (!form.companyName.trim()) nextErrors.companyName = "Company name is required.";
+     if (!form.companySlug.trim()) nextErrors.companySlug = "Company slug is required.";
+     if (form.companySlug && !/^[a-z0-9-]+$/.test(form.companySlug)) {
+@@ -79,19 +148,12 @@ const OrganizationProfile: React.FC = () => {
+     if (form.password && form.confirmPassword && form.password !== form.confirmPassword) {
+       nextErrors.confirmPassword = "Passwords do not match.";
+     }
+-
+     return nextErrors;
+   };
+ 
+-  const required = useMemo(
+-    () => ({ className: "after:ml-1 after:text-red-500 after:content-['*']" }),
+-    [],
+-  );
+-
+-  const handleSubmit = async (event: React.FormEvent) => {
+-    event.preventDefault();
+-    const nextErrors = validate();
+-
++  /* ---- Step 1 submit ---- */
++  const handleStep1Next = async () => {
++    const nextErrors = validateStep1();
+     if (Object.keys(nextErrors).length > 0) {
+       setErrors(nextErrors);
+       toast.error("Please correct the highlighted fields.");
+@@ -107,7 +169,7 @@ const OrganizationProfile: React.FC = () => {
+     try {
+       const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim() || form.adminEmail.trim();
+ 
+-      // 1. Sign up – the DB trigger creates profile + default 'employee' role
++      // 1. Sign up
+       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+         email: form.adminEmail.trim().toLowerCase(),
+         password: form.password,
+@@ -127,7 +189,7 @@ const OrganizationProfile: React.FC = () => {
+ 
+       if (signUpError) throw signUpError;
+ 
+-      // 2. Ensure we have a session
++      // 2. Ensure session
+       if (!signUpData.session) {
+         const { error: signInError } = await supabase.auth.signInWithPassword({
+           email: form.adminEmail.trim().toLowerCase(),
+@@ -136,22 +198,20 @@ const OrganizationProfile: React.FC = () => {
+         if (signInError) throw signInError;
+       }
+ 
+-      // 3. Wait a moment for the DB trigger to complete
+-      await new Promise(resolve => setTimeout(resolve, 1500));
++      // 3. Wait for DB trigger
++      await new Promise((resolve) => setTimeout(resolve, 1500));
+ 
+-      // 4. Ensure user profile exists (fallback if trigger didn't fire)
++      // 4. Ensure user profile
+       const { error: ensureError } = await supabase.rpc("ensure_user_profile", {
+         _name: fullName,
+         _email: form.adminEmail.trim().toLowerCase(),
+         _first_name: form.firstName.trim() || null,
+         _last_name: form.lastName.trim() || null,
+       });
+-      if (ensureError) {
+-        console.warn("ensure_user_profile warning:", ensureError.message);
+-      }
++      if (ensureError) console.warn("ensure_user_profile warning:", ensureError.message);
+ 
+-      // 5. Create the organization via RPC (promotes to admin + seeds categories/currencies)
+-      const { data: orgId, error: orgError } = await supabase.rpc("create_organization", {
++      // 5. Create organization via RPC
++      const { data: newOrgId, error: orgError } = await supabase.rpc("create_organization", {
+         _name: form.companyName.trim(),
+         _slug: form.companySlug.trim(),
+         _corporate_email: form.corporateEmail.trim().toLowerCase(),
+@@ -161,20 +221,16 @@ const OrganizationProfile: React.FC = () => {
+       if (orgError) {
+         console.error("create_organization RPC error:", orgError);
+         toast.error("Organization creation failed: " + orgError.message);
+-        // Fallback: at least promote to admin
+         const { error: promoteError } = await supabase.rpc("promote_to_admin");
+-        if (promoteError) {
+-          console.warn("promote_to_admin also failed:", promoteError.message);
+-        }
++        if (promoteError) console.warn("promote_to_admin also failed:", promoteError.message);
+       } else {
+-        console.log("Organization created with ID:", orgId);
++        setOrgId(newOrgId as string);
++        console.log("Organization created with ID:", newOrgId);
+       }
+ 
+-      // 5. Reload all auth context data (profile, org, roles) BEFORE navigating
+       await reloadAll();
+-
+-      toast.success("Organization created. You are signed in as owner with full admin access.");
+-      navigate("/app", { replace: true });
++      toast.success("Organization created successfully!");
++      setStep(2);
+     } catch (error: unknown) {
+       console.error("Organization creation error:", error);
+       let message = "Failed to create organization";
+@@ -183,7 +239,7 @@ const OrganizationProfile: React.FC = () => {
+         if (message.includes("already been registered") || message.includes("already exists")) {
+           message = "This email is already registered. Please use a different email or sign in.";
+         } else if (message.includes("Database error")) {
+-          message = "Database setup error. Please ensure the database schema has been applied (run migration.sql in Supabase SQL Editor).";
++          message = "Database setup error. Please ensure the database schema has been applied.";
+         } else if (message.includes("signups not allowed") || message.includes("Signups not allowed")) {
+           message = "Signups are disabled in your Supabase project. Enable them in Authentication → Settings.";
+         }
+@@ -194,151 +250,311 @@ const OrganizationProfile: React.FC = () => {
+     }
+   };
+ 
++  /* ---- Step 2 invite helpers ---- */
++  const updateInvite = (index: number, field: keyof InviteRow, value: string) => {
++    setInvites((prev) => prev.map((row, i) => (i === index ? { ...row, [field]: value } : row)));
++  };
++
++  const addInviteRow = () => setInvites((prev) => [...prev, emptyInvite()]);
++
++  const removeInviteRow = (index: number) => {
++    if (invites.length === 1) return;
++    setInvites((prev) => prev.filter((_, i) => i !== index));
++  };
++
++  const handleStep2Next = async () => {
++    const filledInvites = invites.filter((r) => r.email.trim());
++    if (filledInvites.length === 0) {
++      // skip
++      setStep(3);
++      return;
++    }
++
++    setInviteSending(true);
++    const redirectTo = `${window.location.origin}/set-password`;
++
++    const results = await Promise.allSettled(
++      filledInvites.map(async (invite, idx) => {
++        // find actual index in the invites array
++        const realIdx = invites.indexOf(invite);
++        updateInvite(realIdx, "status", "sending");
++
++        const { error } = await supabase.functions.invoke("invite-user", {
++          body: {
++            email: invite.email.trim().toLowerCase(),
++            name: invite.name.trim(),
++            role: invite.role,
++            manager_id: null,
++            tag: null,
++            redirect_to: redirectTo,
++          },
++        });
++
++        if (error) {
++          updateInvite(realIdx, "status", "failed");
++          throw error;
++        }
++        updateInvite(realIdx, "status", "sent");
++      }),
++    );
++
++    const succeeded = results.filter((r) => r.status === "fulfilled").length;
++    const failed = results.filter((r) => r.status === "rejected").length;
++    setInvitesSentCount(succeeded);
++
++    if (succeeded > 0) toast.success(`${succeeded} invite${succeeded > 1 ? "s" : ""} sent!`);
++    if (failed > 0) toast.error(`${failed} invite${failed > 1 ? "s" : ""} failed. You can retry later from User Management.`);
++
++    setInviteSending(false);
++    setStep(3);
++  };
++
++  /* ---- Step 3 finish ---- */
++  const handleFinish = () => {
++    navigate("/app", { replace: true });
++  };
++
++  /* ================================================================ */
++  /* Render                                                            */
++  /* ================================================================ */
++
+   return (
+     <div className="min-h-screen bg-gradient-to-b from-background to-primary/5 px-4 py-8 md:px-8">
+-      <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-3xl border bg-card shadow-xl">
+-        <div className="h-1 w-full bg-gradient-to-r from-info via-primary to-primary/70" />
+-        <form className="space-y-8 p-6 md:p-10" onSubmit={handleSubmit}>
+-          <section>
+-            <div className="mb-6 flex items-center gap-2 text-primary">
+-              <Building2 className="h-5 w-5" />
+-              <h2 className="text-2xl font-extrabold uppercase tracking-[0.14em]">Company Information</h2>
+-            </div>
++      <div className="mx-auto w-full max-w-2xl">
++        <StepIndicator current={step} />
+ 
+-            <div className="grid gap-6 md:grid-cols-2">
+-              <div className="space-y-2">
+-                <Label htmlFor="companyName" {...required}>
+-                  Company Name
+-                </Label>
+-                <Input
+-                  id="companyName"
+-                  placeholder="Acme Corporation"
+-                  value={form.companyName}
+-                  onChange={onChange("companyName")}
+-                />
+-                {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
+-              </div>
+-              <div className="space-y-2">
+-                <Label htmlFor="companySlug" {...required}>
+-                  Company Slug
+-                </Label>
+-                <Input
+-                  id="companySlug"
+-                  placeholder="acme-corporation"
+-                  value={form.companySlug}
+-                  onChange={(event) => {
+-                    setSlugEdited(true);
+-                    onChange("companySlug")(event);
+-                  }}
+-                />
+-                <p className="text-sm text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>
+-                {errors.companySlug && <p className="text-sm text-destructive">{errors.companySlug}</p>}
+-              </div>
+-              <div className="space-y-2">
+-                <Label htmlFor="corporateEmail" {...required}>
+-                  Corporate Email
+-                </Label>
+-                <Input
+-                  id="corporateEmail"
+-                  type="email"
+-                  placeholder="admin@yourcompany.com"
+-                  value={form.corporateEmail}
+-                  onChange={onChange("corporateEmail")}
+-                />
+-                {errors.corporateEmail && <p className="text-sm text-destructive">{errors.corporateEmail}</p>}
+-              </div>
+-              <div className="space-y-2">
+-                <Label htmlFor="businessPhone">Business Phone</Label>
+-                <Input
+-                  id="businessPhone"
+-                  placeholder="+1-555-0123"
+-                  value={form.businessPhone}
+-                  onChange={onChange("businessPhone")}
+-                />
++        {/* ==================== Step 1 ==================== */}
++        {step === 1 && (
++          <Card className="overflow-hidden">
++            <div className="h-1 w-full bg-gradient-to-r from-info via-primary to-primary/70" />
++            <CardContent className="p-6 md:p-8 space-y-8">
++              <section>
++                <div className="mb-6 flex items-center gap-2 text-primary">
++                  <Building2 className="h-5 w-5" />
++                  <h2 className="text-2xl font-extrabold uppercase tracking-[0.14em]">Company Information</h2>
++                </div>
++
++                <div className="grid gap-6 md:grid-cols-2">
++                  <div className="space-y-2">
++                    <Label htmlFor="companyName" {...required}>Company Name</Label>
++                    <Input id="companyName" placeholder="Acme Corporation" value={form.companyName} onChange={onChange("companyName")} />
++                    {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
++                  </div>
++                  <div className="space-y-2">
++                    <Label htmlFor="companySlug" {...required}>Company Slug</Label>
++                    <Input
++                      id="companySlug"
++                      placeholder="acme-corporation"
++                      value={form.companySlug}
++                      onChange={(event) => { setSlugEdited(true); onChange("companySlug")(event); }}
++                    />
++                    <p className="text-sm text-muted-foreground">Lowercase letters, numbers, and hyphens only</p>
++                    {errors.companySlug && <p className="text-sm text-destructive">{errors.companySlug}</p>}
++                  </div>
++                  <div className="space-y-2">
++                    <Label htmlFor="corporateEmail" {...required}>Corporate Email</Label>
++                    <Input id="corporateEmail" type="email" placeholder="admin@yourcompany.com" value={form.corporateEmail} onChange={onChange("corporateEmail")} />
++                    {errors.corporateEmail && <p className="text-sm text-destructive">{errors.corporateEmail}</p>}
++                  </div>
++                  <div className="space-y-2">
++                    <Label htmlFor="businessPhone">Business Phone</Label>
++                    <Input id="businessPhone" placeholder="+1-555-0123" value={form.businessPhone} onChange={onChange("businessPhone")} />
++                  </div>
++                </div>
++              </section>
++
++              <div className="h-px w-full bg-border" />
++
++              <section>
++                <div className="mb-6 flex items-center gap-2 text-primary">
++                  <ShieldCheck className="h-5 w-5" />
++                  <h2 className="text-2xl font-extrabold uppercase tracking-[0.14em]">Administrator Account</h2>
++                </div>
++
++                <div className="grid gap-6 md:grid-cols-2">
++                  <div className="space-y-2">
++                    <Label htmlFor="firstName">First Name</Label>
++                    <Input id="firstName" placeholder="Alex" value={form.firstName} onChange={onChange("firstName")} />
++                  </div>
++                  <div className="space-y-2">
++                    <Label htmlFor="lastName">Last Name</Label>
++                    <Input id="lastName" placeholder="Smith" value={form.lastName} onChange={onChange("lastName")} />
++                  </div>
++                  <div className="space-y-2 md:col-span-2">
++                    <Label htmlFor="adminEmail" {...required}>Admin Email</Label>
++                    <Input id="adminEmail" type="email" placeholder="admin@yourcompany.com" value={form.adminEmail} onChange={onChange("adminEmail")} />
++                    {errors.adminEmail && <p className="text-sm text-destructive">{errors.adminEmail}</p>}
++                  </div>
++                  <div className="space-y-2">
++                    <Label htmlFor="password" {...required}>Password</Label>
++                    <Input id="password" type="password" placeholder="Min. 8 characters" value={form.password} onChange={onChange("password")} />
++                    {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
++                  </div>
++                  <div className="space-y-2">
++                    <Label htmlFor="confirmPassword" {...required}>Confirm Password</Label>
++                    <Input id="confirmPassword" type="password" placeholder="Re-enter password" value={form.confirmPassword} onChange={onChange("confirmPassword")} />
++                    {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
++                  </div>
++                </div>
++              </section>
++
++              <Button
++                size="lg"
++                disabled={submitting}
++                className="h-14 w-full bg-gradient-to-r from-primary to-primary/90 text-xl font-bold"
++                onClick={handleStep1Next}
++              >
++                {submitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
++                {submitting ? "Creating Workspace..." : "Next"}
++                {!submitting && <ArrowRight className="ml-2 h-5 w-5" />}
++              </Button>
++            </CardContent>
++          </Card>
++        )}
++
++        {/* ==================== Step 2 ==================== */}
++        {step === 2 && (
++          <Card className="overflow-hidden">
++            <div className="h-1 w-full bg-gradient-to-r from-info via-primary to-primary/70" />
++            <CardContent className="p-6 md:p-8 space-y-6">
++              <div className="flex items-center gap-2 text-primary">
++                <Users className="h-5 w-5" />
++                <h2 className="text-2xl font-extrabold uppercase tracking-[0.14em]">Invite Your Team</h2>
+               </div>
+-            </div>
+-          </section>
++              <p className="text-muted-foreground text-sm">Add team members now, or skip and invite later from User Management.</p>
+ 
+-          <div className="h-px w-full bg-border" />
++              <div className="space-y-3">
++                {invites.map((invite, idx) => (
++                  <div key={idx} className="flex items-start gap-2">
++                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
++                      <Input
++                        placeholder="Name"
++                        value={invite.name}
++                        onChange={(e) => updateInvite(idx, "name", e.target.value)}
++                        disabled={invite.status === "sending" || invite.status === "sent"}
++                      />
++                      <Input
++                        placeholder="Email"
++                        type="email"
++                        value={invite.email}
++                        onChange={(e) => updateInvite(idx, "email", e.target.value)}
++                        disabled={invite.status === "sending" || invite.status === "sent"}
++                      />
++                      <Select
++                        value={invite.role}
++                        onValueChange={(val) => updateInvite(idx, "role", val)}
++                        disabled={invite.status === "sending" || invite.status === "sent"}
++                      >
++                        <SelectTrigger>
++                          <SelectValue />
++                        </SelectTrigger>
++                        <SelectContent>
++                          <SelectItem value="employee">Employee</SelectItem>
++                          <SelectItem value="hr">HR</SelectItem>
++                          <SelectItem value="finance">Finance</SelectItem>
++                        </SelectContent>
++                      </Select>
++                    </div>
+ 
+-          <section>
+-            <div className="mb-6 flex items-center gap-2 text-primary">
+-              <ShieldCheck className="h-5 w-5" />
+-              <h2 className="text-2xl font-extrabold uppercase tracking-[0.14em]">Administrator Account</h2>
+-            </div>
++                    {/* Status / Remove */}
++                    <div className="flex items-center h-10 shrink-0">
++                      {invite.status === "sending" && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
++                      {invite.status === "sent" && <CheckCircle2 className="w-4 h-4 text-success" />}
++                      {invite.status === "failed" && <XCircle className="w-4 h-4 text-destructive" />}
++                      {invite.status === "idle" && invites.length > 1 && (
++                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeInviteRow(idx)}>
++                          <Trash2 className="w-4 h-4 text-muted-foreground" />
++                        </Button>
++                      )}
++                    </div>
++                  </div>
++                ))}
++              </div>
+ 
+-            <div className="grid gap-6 md:grid-cols-2">
+-              <div className="space-y-2">
+-                <Label htmlFor="firstName">First Name</Label>
+-                <Input
+-                  id="firstName"
+-                  placeholder="Alex"
+-                  value={form.firstName}
+-                  onChange={onChange("firstName")}
+-                />
++              <Button variant="outline" size="sm" onClick={addInviteRow} disabled={inviteSending}>
++                <Plus className="w-4 h-4 mr-1" /> Add another
++              </Button>
++
++              <div className="flex flex-col sm:flex-row items-center gap-3 pt-4">
++                <Button variant="outline" onClick={() => setStep(1)} disabled={inviteSending} className="w-full sm:w-auto">
++                  <ArrowLeft className="w-4 h-4 mr-1" /> Back
++                </Button>
++                <Button
++                  className="w-full sm:flex-1 bg-gradient-to-r from-primary to-accent"
++                  onClick={handleStep2Next}
++                  disabled={inviteSending}
++                >
++                  {inviteSending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
++                  {inviteSending ? "Sending invites..." : "Next"}
++                  {!inviteSending && <ArrowRight className="ml-2 h-4 w-4" />}
++                </Button>
+               </div>
+-              <div className="space-y-2">
+-                <Label htmlFor="lastName">Last Name</Label>
+-                <Input
+-                  id="lastName"
+-                  placeholder="Smith"
+-                  value={form.lastName}
+-                  onChange={onChange("lastName")}
+-                />
++
++              <button
++                type="button"
++                className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
++                onClick={() => setStep(3)}
++                disabled={inviteSending}
++              >
++                Skip for now →
++              </button>
++            </CardContent>
++          </Card>
++        )}
++
++        {/* ==================== Step 3 ==================== */}
++        {step === 3 && (
++          <Card className="overflow-hidden">
++            <div className="h-1 w-full bg-gradient-to-r from-info via-primary to-primary/70" />
++            <CardContent className="p-6 md:p-8 space-y-8 text-center">
++              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-success to-success/70 flex items-center justify-center mx-auto">
++                <Rocket className="w-8 h-8 text-white" />
+               </div>
+-              <div className="space-y-2 md:col-span-2">
+-                <Label htmlFor="adminEmail" {...required}>
+-                  Admin Email
+-                </Label>
+-                <Input
+-                  id="adminEmail"
+-                  type="email"
+-                  placeholder="admin@yourcompany.com"
+-                  value={form.adminEmail}
+-                  onChange={onChange("adminEmail")}
+-                />
+-                {errors.adminEmail && <p className="text-sm text-destructive">{errors.adminEmail}</p>}
++              <div>
++                <h2 className="text-2xl font-bold">You're All Set!</h2>
++                <p className="text-muted-foreground mt-1">Your workspace is ready to go.</p>
+               </div>
+-              <div className="space-y-2">
+-                <Label htmlFor="password" {...required}>
+-                  Password
+-                </Label>
+-                <Input
+-                  id="password"
+-                  type="password"
+-                  placeholder="Min. 8 characters"
+-                  value={form.password}
+-                  onChange={onChange("password")}
+-                />
+-                {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
++
++              <div className="text-left space-y-3 max-w-sm mx-auto">
++                <div className="flex items-center gap-3">
++                  <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
++                  <span className="text-sm font-medium">Organization created</span>
++                </div>
++                <div className="flex items-center gap-3">
++                  <CheckCircle2 className="w-5 h-5 text-success shrink-0" />
++                  <span className="text-sm font-medium">
++                    {invitesSentCount > 0
++                      ? `${invitesSentCount} invite${invitesSentCount > 1 ? "s" : ""} sent`
++                      : "No invites sent yet"}
++                  </span>
++                </div>
++                <div className="flex items-center gap-3">
++                  <ArrowRight className="w-5 h-5 text-primary shrink-0" />
++                  <button
++                    type="button"
++                    className="text-sm font-medium text-primary hover:underline"
++                    onClick={() => navigate("/app/settings", { replace: true })}
++                  >
++                    Set up expense categories
++                  </button>
++                </div>
+               </div>
+-              <div className="space-y-2">
+-                <Label htmlFor="confirmPassword" {...required}>
+-                  Confirm Password
+-                </Label>
+-                <Input
+-                  id="confirmPassword"
+-                  type="password"
+-                  placeholder="Re-enter password"
+-                  value={form.confirmPassword}
+-                  onChange={onChange("confirmPassword")}
+-                />
+-                {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
++
++              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
++                <Button variant="outline" onClick={() => setStep(2)} className="w-full sm:w-auto">
++                  <ArrowLeft className="w-4 h-4 mr-1" /> Back
++                </Button>
++                <Button
++                  className="w-full sm:flex-1 bg-gradient-to-r from-primary to-accent text-lg font-bold h-12"
++                  onClick={handleFinish}
++                >
++                  Go to Dashboard
++                  <ArrowRight className="ml-2 h-5 w-5" />
++                </Button>
+               </div>
+-            </div>
+-          </section>
+-
+-          <Button
+-            type="submit"
+-            size="lg"
+-            disabled={submitting}
+-            className="h-14 w-full bg-gradient-to-r from-primary to-primary/90 text-xl font-bold"
+-          >
+-            {submitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
+-            {submitting ? "Creating Workspace..." : "Create Workspace"}
+-            {!submitting && <ArrowRight className="ml-2 h-5 w-5" />}
+-          </Button>
+-        </form>
++            </CardContent>
++          </Card>
++        )}
+       </div>
+     </div>
+   );
+diff --git a/src/pages/Profile.tsx b/src/pages/Profile.tsx
+index fd0132a..a8a8d3c 100644
+--- a/src/pages/Profile.tsx
++++ b/src/pages/Profile.tsx
+@@ -12,14 +12,14 @@ const ProfilePage: React.FC = () => {
+   return (
+     <div className="max-w-2xl mx-auto space-y-6">
+       <div>
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">Profile</h1>
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Profile</h1>
+         <p className="text-muted-foreground mt-1">Your account information</p>
+       </div>
+ 
+       <Card>
+         <CardHeader>
+           <div className="flex items-center gap-4">
+-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
++            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
+               <span className="text-2xl font-bold text-primary-foreground">
+                 {profile.name?.charAt(0)?.toUpperCase()}
+               </span>
+diff --git a/src/pages/SetPassword.tsx b/src/pages/SetPassword.tsx
+index e4b52c6..4ef20fb 100644
+--- a/src/pages/SetPassword.tsx
++++ b/src/pages/SetPassword.tsx
+@@ -117,7 +117,7 @@ const SetPassword: React.FC = () => {
+               </div>
+               <Button
+                 type="submit"
+-                className="w-full bg-gradient-to-r from-primary to-info"
++                className="w-full bg-gradient-to-r from-primary to-accent"
+                 disabled={saving}
+               >
+                 {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+@@ -125,7 +125,7 @@ const SetPassword: React.FC = () => {
+               </Button>
+             </form>
+           ) : (
+-            <Button className="w-full bg-gradient-to-r from-primary to-info" onClick={() => navigate('/login', { replace: true })}>
++            <Button className="w-full bg-gradient-to-r from-primary to-accent" onClick={() => navigate('/login', { replace: true })}>
+               Back to Login
+             </Button>
+           )}
+diff --git a/src/pages/SubmitExpense.tsx b/src/pages/SubmitExpense.tsx
+index 9bde844..66b861e 100644
+--- a/src/pages/SubmitExpense.tsx
++++ b/src/pages/SubmitExpense.tsx
+@@ -7,9 +7,11 @@ import { Label } from '@/components/ui/label';
+ import { Textarea } from '@/components/ui/textarea';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
++import { Badge } from '@/components/ui/badge';
++import { Progress } from '@/components/ui/progress';
+ import { toast } from 'sonner';
+-import { Loader2, Upload, DollarSign } from 'lucide-react';
+-import type { ExpenseCategory, OrgCurrency } from '@/types/database';
++import { Loader2, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
++import type { ExpenseCategory, OrgCurrency, CategoryLimit } from '@/types/database';
+ 
+ const SubmitExpense: React.FC = () => {
+   const { user, profile } = useAuth();
+@@ -23,6 +25,16 @@ const SubmitExpense: React.FC = () => {
+   const [currencies, setCurrencies] = useState<OrgCurrency[]>([]);
+   const [loading, setLoading] = useState(false);
+ 
++  // OCR states
++  const [scanning, setScanning] = useState(false);
++  const [ocrDone, setOcrDone] = useState(false);
++  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
++
++  // Policy limit states
++  const [categoryLimit, setCategoryLimit] = useState<CategoryLimit | null>(null);
++  const [monthlySpend, setMonthlySpend] = useState<number | null>(null);
++  const [loadingLimits, setLoadingLimits] = useState(false);
++
+   useEffect(() => {
+     if (!profile?.org_id) return;
+ 
+@@ -53,6 +65,117 @@ const SubmitExpense: React.FC = () => {
+       });
+   }, [profile?.org_id]);
+ 
++  // Fetch category limits when category changes
++  useEffect(() => {
++    if (!categoryId || !profile?.org_id) {
++      setCategoryLimit(null);
++      setMonthlySpend(null);
++      return;
++    }
++
++    const fetchLimits = async () => {
++      setLoadingLimits(true);
++      try {
++        // Get limit config
++        const { data: limitData } = await supabase
++          .from('category_limits')
++          .select('*')
++          .eq('org_id', profile.org_id)
++          .eq('category_id', categoryId)
++          .maybeSingle();
++
++        const limit = limitData as CategoryLimit | null;
++        setCategoryLimit(limit);
++
++        // Get monthly spend if there's a monthly limit
++        if (limit?.monthly_limit != null) {
++          const { data: spendData } = await supabase
++            .rpc('get_category_monthly_spend', {
++              p_category_id: categoryId,
++              p_org_id: profile.org_id,
++            });
++          const spend = Number(spendData ?? 0);
++          setMonthlySpend(Number.isFinite(spend) ? spend : 0);
++        } else {
++          setMonthlySpend(null);
++        }
++      } catch (err) {
++        console.error('Failed to fetch category limits:', err);
++      } finally {
++        setLoadingLimits(false);
++      }
++    };
++
++    fetchLimits();
++  }, [categoryId, profile?.org_id]);
++
++  // Compute policy violations
++  const parsedAmount = parseFloat(amount) || 0;
++  const perExpenseLimit = categoryLimit?.per_expense_limit != null ? Number(categoryLimit.per_expense_limit) : null;
++  const monthlyLimit = categoryLimit?.monthly_limit != null ? Number(categoryLimit.monthly_limit) : null;
++  const monthlyProjectedSpend = monthlySpend != null ? monthlySpend + parsedAmount : null;
++  const perExpenseExceeded = perExpenseLimit != null && parsedAmount > perExpenseLimit;
++  const monthlyExceeded = monthlyLimit != null && monthlyProjectedSpend != null && monthlyProjectedSpend > monthlyLimit;
++  const monthlyProgress = monthlyLimit != null && monthlySpend != null
++    ? monthlyLimit > 0 ? Math.min((monthlySpend / monthlyLimit) * 100, 100) : 100
++    : 0;
++  const isPolicyException = perExpenseExceeded || monthlyExceeded;
++
++  const handleReceiptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
++    const file = e.target.files?.[0];
++    if (!file || !user) return;
++
++    setReceipt(file);
++    setScanning(true);
++    setOcrDone(false);
++    setReceiptUrl(null);
++
++    try {
++      // 1. Upload to Supabase Storage
++      const ext = file.name.split('.').pop();
++      const path = `${user.id}/${Date.now()}.${ext}`;
++      const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file);
++      if (uploadError) throw uploadError;
++
++      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
++      const uploadedUrl = urlData.publicUrl;
++      setReceiptUrl(uploadedUrl);
++
++      // 2. Call OCR Edge Function
++      const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-receipt', {
++        body: { receipt_url: uploadedUrl, org_id: profile?.org_id },
++      });
++
++      if (ocrData && !ocrError) {
++        let filledAny = false;
++        if (ocrData.amount && !amount) {
++          setAmount(ocrData.amount);
++          filledAny = true;
++        }
++        if (ocrData.date && expenseDate === new Date().toISOString().slice(0, 10)) {
++          setExpenseDate(ocrData.date);
++          filledAny = true;
++        }
++        if (ocrData.suggested_description && !description) {
++          setDescription(ocrData.suggested_description);
++          filledAny = true;
++        }
++
++        setOcrDone(true);
++        if (filledAny) {
++          toast.info('We filled in some details — please review before submitting', {
++            duration: 5000,
++          });
++        }
++      }
++    } catch (error: any) {
++      console.error('OCR or upload failed:', error);
++      // Fail silently for OCR, fallback to standard upload flow later
++    } finally {
++      setScanning(false);
++    }
++  };
++
+   const handleSubmit = async (e: React.FormEvent) => {
+     e.preventDefault();
+     if (!user) return;
+@@ -67,14 +190,14 @@ const SubmitExpense: React.FC = () => {
+     setLoading(true);
+ 
+     try {
+-      let receiptUrl = null;
+-      if (receipt) {
++      let finalReceiptUrl = receiptUrl;
++      if (receipt && !receiptUrl) {
+         const ext = receipt.name.split('.').pop();
+         const path = `${user.id}/${Date.now()}.${ext}`;
+         const { error: uploadError } = await supabase.storage.from('receipts').upload(path, receipt);
+         if (uploadError) throw uploadError;
+         const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
+-        receiptUrl = urlData.publicUrl;
++        finalReceiptUrl = urlData.publicUrl;
+       }
+ 
+       // Get manager for L1 approval
+@@ -90,10 +213,11 @@ const SubmitExpense: React.FC = () => {
+         currency: currency || 'INR',
+         category_id: categoryId,
+         description,
+-        receipt_url: receiptUrl,
++        receipt_url: finalReceiptUrl,
+         status: 'pending_l1',
+         current_approver_id: profileData?.manager_id || null,
+         submitted_at: new Date(`${expenseDate}T12:00:00`).toISOString(),
++        is_policy_exception: isPolicyException,
+       });
+ 
+       if (error) throw error;
+@@ -104,6 +228,10 @@ const SubmitExpense: React.FC = () => {
+       setDescription('');
+       setExpenseDate(new Date().toISOString().slice(0, 10));
+       setReceipt(null);
++      setReceiptUrl(null);
++      setOcrDone(false);
++      setCategoryLimit(null);
++      setMonthlySpend(null);
+     } catch (error: any) {
+       toast.error(error.message || 'Failed to submit expense');
+     } finally {
+@@ -114,11 +242,13 @@ const SubmitExpense: React.FC = () => {
+   // Find the symbol for the selected currency
+   const selectedCurr = currencies.find(c => c.code === currency);
+   const currSymbol = selectedCurr?.symbol || '$';
++  const formatMoney = (value: number) =>
++    `${currSymbol}${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+ 
+   return (
+     <div className="max-w-2xl mx-auto">
+       <div className="mb-6">
+-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
++        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+           Submit Expense
+         </h1>
+         <p className="text-muted-foreground mt-1">Fill in the details to submit a new expense report</p>
+@@ -143,13 +273,20 @@ const SubmitExpense: React.FC = () => {
+                     className="pl-8"
+                     value={amount}
+                     onChange={e => setAmount(e.target.value)}
++                    disabled={scanning}
+                     required
+                   />
+                 </div>
++                {perExpenseExceeded && (
++                  <p className="flex items-center gap-1 text-sm text-warning">
++                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
++                    This category has a per-expense limit of {formatMoney(perExpenseLimit!)}
++                  </p>
++                )}
+               </div>
+               <div className="space-y-2">
+                 <Label htmlFor="currency">Currency</Label>
+-                <Select value={currency} onValueChange={setCurrency}>
++                <Select value={currency} onValueChange={setCurrency} disabled={scanning}>
+                   <SelectTrigger>
+                     <SelectValue placeholder="Select currency" />
+                   </SelectTrigger>
+@@ -166,7 +303,7 @@ const SubmitExpense: React.FC = () => {
+ 
+             <div className="space-y-2">
+               <Label htmlFor="category">Category</Label>
+-              <Select value={categoryId} onValueChange={setCategoryId} required>
++              <Select value={categoryId} onValueChange={setCategoryId} disabled={scanning} required>
+                 <SelectTrigger>
+                   <SelectValue placeholder="Select category" />
+                 </SelectTrigger>
+@@ -176,6 +313,30 @@ const SubmitExpense: React.FC = () => {
+                   ))}
+                 </SelectContent>
+               </Select>
++              {loadingLimits && (
++                <p className="text-xs text-muted-foreground">Checking category limits...</p>
++              )}
++              {/* Monthly budget progress */}
++              {monthlyLimit != null && monthlySpend != null && (
++                <div className="space-y-1.5 pt-1">
++                  <div className="flex items-center justify-between text-xs">
++                    <span className="text-muted-foreground">Monthly budget</span>
++                    <span className={`font-medium ${monthlyExceeded ? 'text-warning' : 'text-foreground'}`}>
++                      {formatMoney(monthlySpend)} of {formatMoney(monthlyLimit)} used this month
++                    </span>
++                  </div>
++                  <Progress
++                    value={monthlyProgress}
++                    className="h-1.5"
++                  />
++                  {monthlyExceeded && (
++                    <p className="flex items-center gap-1 text-xs text-warning">
++                      <AlertTriangle className="w-3 h-3 shrink-0" />
++                      This will exceed the monthly limit for this category
++                    </p>
++                  )}
++                </div>
++              )}
+             </div>
+ 
+             <div className="space-y-2">
+@@ -185,6 +346,7 @@ const SubmitExpense: React.FC = () => {
+                 type="date"
+                 value={expenseDate}
+                 onChange={e => setExpenseDate(e.target.value)}
++                disabled={scanning}
+                 required
+               />
+             </div>
+@@ -197,30 +359,56 @@ const SubmitExpense: React.FC = () => {
+                 rows={3}
+                 value={description}
+                 onChange={e => setDescription(e.target.value)}
++                disabled={scanning}
+                 required
+               />
+             </div>
+ 
+             <div className="space-y-2">
+               <Label htmlFor="receipt">Receipt</Label>
+-              <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+-                onClick={() => document.getElementById('receipt-input')?.click()}>
+-                <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+-                <p className="text-sm text-muted-foreground">
+-                  {receipt ? receipt.name : 'Click to upload or drag and drop'}
+-                </p>
++              <div
++                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${scanning ? 'border-primary/50 bg-primary/5' : 'hover:border-primary/50'}`}
++                onClick={() => !scanning && document.getElementById('receipt-input')?.click()}
++              >
++                {scanning ? (
++                  <Loader2 className="w-8 h-8 mx-auto text-primary animate-spin mb-2" />
++                ) : (
++                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
++                )}
++                <div className="flex items-center justify-center gap-2">
++                  <p className="text-sm text-muted-foreground">
++                    {scanning ? 'Scanning receipt...' : receipt ? receipt.name : 'Click to upload or drag and drop'}
++                  </p>
++                  {ocrDone && receipt && !scanning && (
++                    <Badge variant="outline" className="bg-success/10 text-success border-success/20">
++                      <CheckCircle2 className="w-3 h-3 mr-1" /> Scanned
++                    </Badge>
++                  )}
++                </div>
+                 <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG up to 10MB</p>
+                 <input
+                   id="receipt-input"
+                   type="file"
+                   accept=".pdf,.png,.jpg,.jpeg"
+                   className="hidden"
+-                  onChange={e => setReceipt(e.target.files?.[0] || null)}
++                  onChange={handleReceiptChange}
++                  disabled={scanning}
+                 />
+               </div>
+             </div>
+ 
+-            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-info" disabled={loading}>
++            {/* Policy exception warning banner */}
++            {isPolicyException && (
++              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
++                <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
++                <div className="text-sm">
++                  <p className="font-medium text-warning">Policy exception</p>
++                  <p className="text-muted-foreground">This expense exceeds a category limit. It will be flagged for reviewer attention.</p>
++                </div>
++              </div>
++            )}
++
++            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-accent" disabled={loading}>
+               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+               Submit Expense
+             </Button>
+diff --git a/src/pages/UserManagement.tsx b/src/pages/UserManagement.tsx
+index 7e15a42..ce1d22d 100644
+--- a/src/pages/UserManagement.tsx
++++ b/src/pages/UserManagement.tsx
+@@ -20,7 +20,8 @@ import {
+ } from '@/components/ui/alert-dialog';
+ import { Badge } from '@/components/ui/badge';
+ import { toast } from 'sonner';
+-import { Loader2, Mail, Pencil, Plus, Search, Trash2, UserCheck, UserX } from 'lucide-react';
++import { Loader2, Mail, Pencil, Plus, Search, Trash2, UserCheck, UserX, AlertTriangle } from 'lucide-react';
++import { usePlanLimit } from '@/hooks/usePlanLimit';
+ import type { Profile, AppRole } from '@/types/database';
+ 
+ interface UserWithRoles extends Profile {
+@@ -30,6 +31,7 @@ interface UserWithRoles extends Profile {
+ 
+ const UserManagement: React.FC = () => {
+   const { profile: currentProfile, roles } = useAuth();
++  const billing = usePlanLimit();
+   const [users, setUsers] = useState<UserWithRoles[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [creatingUser, setCreatingUser] = useState(false);
+@@ -239,15 +241,33 @@ const UserManagement: React.FC = () => {
+     <div className="space-y-6">
+       <div className="flex items-center justify-between">
+         <div>
+-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">User Management</h1>
++          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">User Management</h1>
+           <p className="text-muted-foreground mt-1">{isAdmin ? 'Manage users, roles, and assignments' : 'Invite users and manage active status'}</p>
+         </div>
+-        <Button onClick={() => setShowCreateDialog(true)} className="bg-gradient-to-r from-primary to-info" disabled={!canInviteUsers}>
++        <Button
++          onClick={() => setShowCreateDialog(true)}
++          className="bg-gradient-to-r from-primary to-accent"
++          disabled={!canInviteUsers || billing.userLimitReached}
++          title={billing.userLimitReached ? 'User limit reached for your plan' : undefined}
++        >
+           <Plus className="h-4 w-4 mr-2" />
+           Invite User
+         </Button>
+       </div>
+ 
++      {billing.userLimitReached && (
++        <Card className="border-warning/30 bg-warning/5">
++          <CardContent className="flex items-center gap-3 py-4">
++            <AlertTriangle className="h-5 w-5 text-warning shrink-0" />
++            <p className="text-sm">
++              Your <span className="font-semibold">{billing.plan}</span> plan allows up to{' '}
++              <span className="font-semibold">{billing.limits?.max_users}</span> users.
++              {' '}Upgrade your plan in <span className="font-semibold">Organization Settings → Billing</span> to add more.
++            </p>
++          </CardContent>
++        </Card>
++      )}
++
+       <Card>
+         <CardHeader>
+           <div className="relative">
+@@ -377,7 +397,7 @@ const UserManagement: React.FC = () => {
+                 </SelectContent>
+               </Select>
+             </div>
+-            <Button onClick={handleCreateUser} disabled={creatingUser} className="w-full bg-gradient-to-r from-primary to-info">
++            <Button onClick={handleCreateUser} disabled={creatingUser} className="w-full bg-gradient-to-r from-primary to-accent">
+               {creatingUser && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+               Send Activation Invite
+             </Button>
+diff --git a/src/types/database.ts b/src/types/database.ts
+index 2bde301..0467e92 100644
+--- a/src/types/database.ts
++++ b/src/types/database.ts
+@@ -78,6 +78,7 @@ export interface Expense {
+   current_approver_id: string | null;
+   submitted_at: string;
+   decided_at: string | null;
++  is_policy_exception: boolean;
+   created_at: string;
+   updated_at: string;
+ }
+@@ -99,3 +100,50 @@ export interface ExpenseWithDetails extends Expense {
+   users?: Profile;
+   expense_categories?: ExpenseCategory;
+ }
++
++// ---- Billing / Subscriptions ----
++
++export type PlanType = 'free' | 'pro' | 'enterprise';
++
++export interface Subscription {
++  id: string;
++  org_id: string;
++  stripe_customer_id: string | null;
++  stripe_subscription_id: string | null;
++  plan: PlanType;
++  status: string;
++  current_period_end: string | null;
++  created_at: string;
++  updated_at: string;
++}
++
++export interface PlanLimit {
++  plan: PlanType;
++  max_users: number;
++  max_expenses_per_month: number;
++  has_analytics: boolean;
++  has_api: boolean;
++}
++
++// ---- Notification Preferences ----
++
++export interface NotificationPreferences {
++  id: string;
++  user_id: string;
++  on_expense_submitted: boolean;
++  on_expense_approved: boolean;
++  on_expense_rejected: boolean;
++  on_approval_needed: boolean;
++}
++
++// ---- Category Spend Limits ----
++
++export interface CategoryLimit {
++  id: string;
++  org_id: string;
++  category_id: string;
++  monthly_limit: number | null;
++  per_expense_limit: number | null;
++  created_at: string;
++  updated_at: string;
++}

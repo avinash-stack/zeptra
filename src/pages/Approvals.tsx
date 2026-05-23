@@ -10,12 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { CheckCircle, XCircle, ArrowRight, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle, XCircle, ArrowRight, Search } from 'lucide-react';
 import type { ExpenseWithDetails, Profile } from '@/types/database';
 
 const Approvals: React.FC = () => {
-  const { user } = useAuth();
+  const { user, hasAnyRole, hasRole } = useAuth();
   const [expenses, setExpenses] = useState<ExpenseWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionExpense, setActionExpense] = useState<ExpenseWithDetails | null>(null);
@@ -32,12 +33,19 @@ const Approvals: React.FC = () => {
 
   const fetchPendingExpenses = async () => {
     if (!user) return;
-    const { data } = await supabase
+    const isFinance = hasAnyRole(['finance']);
+
+    let query = supabase
       .from('expenses')
       .select('*, expense_categories(name)')
-      .eq('current_approver_id', user.id)
       .in('status', ['pending_l1', 'pending_l2'])
       .order('submitted_at', { ascending: false });
+
+    if (!isFinance) {
+      query = query.eq('current_approver_id', user.id);
+    }
+
+    const { data } = await query;
 
     if (data && data.length > 0) {
       // Enrich with submitter names from public.users
@@ -70,45 +78,64 @@ const Approvals: React.FC = () => {
 
   const handleApprove = async (expense: ExpenseWithDetails) => {
     try {
-      if (expense.status === 'pending_l1') {
-        // Check if L2 approver exists (the current approver's manager)
-        const { data: managerProfile } = await supabase
-          .from('users')
-          .select('manager_id')
-          .eq('id', user!.id)
-          .single();
+      const isFinance = hasAnyRole(['finance']);
 
-        if (managerProfile?.manager_id) {
-          // Move to L2
-          await supabase.from('expenses').update({
-            status: 'pending_l2',
-            current_approver_id: managerProfile.manager_id,
-          }).eq('id', expense.id);
+      if (isFinance) {
+        // Finance: always final approval
+        await supabase.from('expenses').update({
+          status: 'approved',
+          current_approver_id: null,
+          decided_at: new Date().toISOString(),
+        }).eq('id', expense.id);
+        
+        await supabase.from('approval_history').insert({
+          expense_id: expense.id,
+          approver_id: user!.id,
+          action: 'approved',
+          level: 2,
+          comments,
+        });
+      } else {
+        if (expense.status === 'pending_l1') {
+          // Check if L2 approver exists (the current approver's manager)
+          const { data: managerProfile } = await supabase
+            .from('users')
+            .select('manager_id')
+            .eq('id', user!.id)
+            .single();
+
+          if (managerProfile?.manager_id) {
+            // Move to L2
+            await supabase.from('expenses').update({
+              status: 'pending_l2',
+              current_approver_id: managerProfile.manager_id,
+            }).eq('id', expense.id);
+          } else {
+            // No L2, directly approve
+            await supabase.from('expenses').update({
+              status: 'approved',
+              current_approver_id: null,
+              decided_at: new Date().toISOString(),
+            }).eq('id', expense.id);
+          }
         } else {
-          // No L2, directly approve
+          // L2 approval → approved
           await supabase.from('expenses').update({
             status: 'approved',
             current_approver_id: null,
             decided_at: new Date().toISOString(),
           }).eq('id', expense.id);
         }
-      } else {
-        // L2 approval → approved
-        await supabase.from('expenses').update({
-          status: 'approved',
-          current_approver_id: null,
-          decided_at: new Date().toISOString(),
-        }).eq('id', expense.id);
-      }
 
-      // Log approval history
-      await supabase.from('approval_history').insert({
-        expense_id: expense.id,
-        approver_id: user!.id,
-        action: 'approved',
-        level: expense.status === 'pending_l1' ? 1 : 2,
-        comments,
-      });
+        // Log approval history
+        await supabase.from('approval_history').insert({
+          expense_id: expense.id,
+          approver_id: user!.id,
+          action: 'approved',
+          level: expense.status === 'pending_l1' ? 1 : 2,
+          comments,
+        });
+      }
 
       toast.success('Expense approved');
       setActionExpense(null);
@@ -185,7 +212,7 @@ const Approvals: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">Approvals</h1>
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">Approvals</h1>
         <p className="text-muted-foreground mt-1">Review and approve pending expense requests</p>
       </div>
 
@@ -227,18 +254,32 @@ const Approvals: React.FC = () => {
                     {Number(expense.amount).toFixed(2)}
                     <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
                   </TableCell>
-                  <TableCell><StatusBadge status={expense.status} /></TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      <StatusBadge status={expense.status} managerView={true} />
+                      {expense.is_policy_exception && (
+                        <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
+                          <AlertTriangle className="mr-1 h-3 w-3" />
+                          Policy exception
+                        </Badge>
+                      )}
+                    </div>
+                  </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
                       <Button size="sm" variant="ghost" className="text-success" onClick={() => openAction(expense, 'approve')}>
                         <CheckCircle className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => openAction(expense, 'reject')}>
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => openAction(expense, 'reassign')}>
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
+                      {(hasAnyRole(['finance']) || hasRole('admin')) && (
+                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => openAction(expense, 'reject')}>
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {!hasAnyRole(['finance']) && (
+                        <Button size="sm" variant="ghost" onClick={() => openAction(expense, 'reassign')}>
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -261,6 +302,12 @@ const Approvals: React.FC = () => {
                   {Number(actionExpense.amount).toFixed(2)} {actionExpense.currency}
                 </p>
                 <p className="text-sm text-muted-foreground">{actionExpense.description}</p>
+                {actionExpense.is_policy_exception && (
+                  <Badge variant="outline" className="mt-2 bg-warning/15 text-warning border-warning/30">
+                    <AlertTriangle className="mr-1 h-3 w-3" />
+                    Policy exception
+                  </Badge>
+                )}
               </div>
             )}
             {actionType === 'reassign' && (
@@ -281,12 +328,12 @@ const Approvals: React.FC = () => {
               <Textarea value={comments} onChange={e => setComments(e.target.value)} placeholder="Add comments..." />
             </div>
             <Button
-              className={`w-full ${actionType === 'reject' ? 'bg-destructive hover:bg-destructive/90' : 'bg-gradient-to-r from-primary to-info'}`}
+              className={`w-full ${actionType === 'reject' ? 'bg-destructive hover:bg-destructive/90' : 'bg-gradient-to-r from-primary to-accent'}`}
               onClick={() => {
                 if (!actionExpense) return;
                 if (actionType === 'approve') handleApprove(actionExpense);
-                else if (actionType === 'reject') handleReject(actionExpense);
-                else handleReassign(actionExpense);
+                else if (actionType === 'reject' && (hasAnyRole(['finance']) || hasRole('admin'))) handleReject(actionExpense);
+                else if (actionType === 'reassign' && !hasAnyRole(['finance'])) handleReassign(actionExpense);
               }}
             >
               {actionType === 'approve' ? 'Approve' : actionType === 'reject' ? 'Reject' : 'Reassign'}

@@ -85,7 +85,7 @@ const Login: React.FC = () => {
             </div>
             <Button
               type="submit"
-              className="w-full bg-gradient-to-r from-primary to-info"
+              className="w-full bg-gradient-to-r from-primary to-accent"
               disabled={loading || !isSupabaseConfigured}
             >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

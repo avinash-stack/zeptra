@@ -41,7 +41,7 @@ const AppLayout: React.FC = () => {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-full p-0 overflow-hidden">
-                    <div className="w-full h-full rounded-full bg-gradient-to-br from-primary to-info flex items-center justify-center">
+                    <div className="w-full h-full rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center">
                       <span className="text-xs font-bold text-primary-foreground">
                         {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
                       </span>

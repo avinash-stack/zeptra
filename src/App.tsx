@@ -81,7 +81,7 @@ const App = () => (
               <Route path="submit" element={<SubmitExpense />} />
               <Route path="expenses" element={<MyExpenses />} />
               <Route path="approvals" element={
-                <ProtectedRoute allowedRoles={['admin']} requireManager>
+                <ProtectedRoute allowedRoles={['admin', 'finance']} requireManager>
                   <Approvals />
                 </ProtectedRoute>
               } />

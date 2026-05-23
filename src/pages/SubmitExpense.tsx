@@ -7,9 +7,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Loader2, Upload, DollarSign } from 'lucide-react';
-import type { ExpenseCategory, OrgCurrency } from '@/types/database';
+import { Loader2, Upload, CheckCircle2, AlertTriangle } from 'lucide-react';
+import type { ExpenseCategory, OrgCurrency, CategoryLimit } from '@/types/database';
 
 const SubmitExpense: React.FC = () => {
   const { user, profile } = useAuth();
@@ -22,6 +24,16 @@ const SubmitExpense: React.FC = () => {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [currencies, setCurrencies] = useState<OrgCurrency[]>([]);
   const [loading, setLoading] = useState(false);
+
+  // OCR states
+  const [scanning, setScanning] = useState(false);
+  const [ocrDone, setOcrDone] = useState(false);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+
+  // Policy limit states
+  const [categoryLimit, setCategoryLimit] = useState<CategoryLimit | null>(null);
+  const [monthlySpend, setMonthlySpend] = useState<number | null>(null);
+  const [loadingLimits, setLoadingLimits] = useState(false);
 
   useEffect(() => {
     if (!profile?.org_id) return;
@@ -53,6 +65,117 @@ const SubmitExpense: React.FC = () => {
       });
   }, [profile?.org_id]);
 
+  // Fetch category limits when category changes
+  useEffect(() => {
+    if (!categoryId || !profile?.org_id) {
+      setCategoryLimit(null);
+      setMonthlySpend(null);
+      return;
+    }
+
+    const fetchLimits = async () => {
+      setLoadingLimits(true);
+      try {
+        // Get limit config
+        const { data: limitData } = await supabase
+          .from('category_limits')
+          .select('*')
+          .eq('org_id', profile.org_id)
+          .eq('category_id', categoryId)
+          .maybeSingle();
+
+        const limit = limitData as CategoryLimit | null;
+        setCategoryLimit(limit);
+
+        // Get monthly spend if there's a monthly limit
+        if (limit?.monthly_limit != null) {
+          const { data: spendData } = await supabase
+            .rpc('get_category_monthly_spend', {
+              p_category_id: categoryId,
+              p_org_id: profile.org_id,
+            });
+          const spend = Number(spendData ?? 0);
+          setMonthlySpend(Number.isFinite(spend) ? spend : 0);
+        } else {
+          setMonthlySpend(null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch category limits:', err);
+      } finally {
+        setLoadingLimits(false);
+      }
+    };
+
+    fetchLimits();
+  }, [categoryId, profile?.org_id]);
+
+  // Compute policy violations
+  const parsedAmount = parseFloat(amount) || 0;
+  const perExpenseLimit = categoryLimit?.per_expense_limit != null ? Number(categoryLimit.per_expense_limit) : null;
+  const monthlyLimit = categoryLimit?.monthly_limit != null ? Number(categoryLimit.monthly_limit) : null;
+  const monthlyProjectedSpend = monthlySpend != null ? monthlySpend + parsedAmount : null;
+  const perExpenseExceeded = perExpenseLimit != null && parsedAmount > perExpenseLimit;
+  const monthlyExceeded = monthlyLimit != null && monthlyProjectedSpend != null && monthlyProjectedSpend > monthlyLimit;
+  const monthlyProgress = monthlyLimit != null && monthlySpend != null
+    ? monthlyLimit > 0 ? Math.min((monthlySpend / monthlyLimit) * 100, 100) : 100
+    : 0;
+  const isPolicyException = perExpenseExceeded || monthlyExceeded;
+
+  const handleReceiptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setReceipt(file);
+    setScanning(true);
+    setOcrDone(false);
+    setReceiptUrl(null);
+
+    try {
+      // 1. Upload to Supabase Storage
+      const ext = file.name.split('.').pop();
+      const path = `${user.id}/${Date.now()}.${ext}`;
+      const { error: uploadError } = await supabase.storage.from('receipts').upload(path, file);
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
+      const uploadedUrl = urlData.publicUrl;
+      setReceiptUrl(uploadedUrl);
+
+      // 2. Call OCR Edge Function
+      const { data: ocrData, error: ocrError } = await supabase.functions.invoke('ocr-receipt', {
+        body: { receipt_url: uploadedUrl, org_id: profile?.org_id },
+      });
+
+      if (ocrData && !ocrError) {
+        let filledAny = false;
+        if (ocrData.amount && !amount) {
+          setAmount(ocrData.amount);
+          filledAny = true;
+        }
+        if (ocrData.date && expenseDate === new Date().toISOString().slice(0, 10)) {
+          setExpenseDate(ocrData.date);
+          filledAny = true;
+        }
+        if (ocrData.suggested_description && !description) {
+          setDescription(ocrData.suggested_description);
+          filledAny = true;
+        }
+
+        setOcrDone(true);
+        if (filledAny) {
+          toast.info('We filled in some details — please review before submitting', {
+            duration: 5000,
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('OCR or upload failed:', error);
+      // Fail silently for OCR, fallback to standard upload flow later
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -67,14 +190,14 @@ const SubmitExpense: React.FC = () => {
     setLoading(true);
 
     try {
-      let receiptUrl = null;
-      if (receipt) {
+      let finalReceiptUrl = receiptUrl;
+      if (receipt && !receiptUrl) {
         const ext = receipt.name.split('.').pop();
         const path = `${user.id}/${Date.now()}.${ext}`;
         const { error: uploadError } = await supabase.storage.from('receipts').upload(path, receipt);
         if (uploadError) throw uploadError;
         const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
-        receiptUrl = urlData.publicUrl;
+        finalReceiptUrl = urlData.publicUrl;
       }
 
       // Get manager for L1 approval
@@ -90,10 +213,11 @@ const SubmitExpense: React.FC = () => {
         currency: currency || 'INR',
         category_id: categoryId,
         description,
-        receipt_url: receiptUrl,
+        receipt_url: finalReceiptUrl,
         status: 'pending_l1',
         current_approver_id: profileData?.manager_id || null,
         submitted_at: new Date(`${expenseDate}T12:00:00`).toISOString(),
+        is_policy_exception: isPolicyException,
       });
 
       if (error) throw error;
@@ -104,6 +228,10 @@ const SubmitExpense: React.FC = () => {
       setDescription('');
       setExpenseDate(new Date().toISOString().slice(0, 10));
       setReceipt(null);
+      setReceiptUrl(null);
+      setOcrDone(false);
+      setCategoryLimit(null);
+      setMonthlySpend(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to submit expense');
     } finally {
@@ -114,11 +242,13 @@ const SubmitExpense: React.FC = () => {
   // Find the symbol for the selected currency
   const selectedCurr = currencies.find(c => c.code === currency);
   const currSymbol = selectedCurr?.symbol || '$';
+  const formatMoney = (value: number) =>
+    `${currSymbol}${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
   return (
     <div className="max-w-2xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
           Submit Expense
         </h1>
         <p className="text-muted-foreground mt-1">Fill in the details to submit a new expense report</p>
@@ -143,13 +273,20 @@ const SubmitExpense: React.FC = () => {
                     className="pl-8"
                     value={amount}
                     onChange={e => setAmount(e.target.value)}
+                    disabled={scanning}
                     required
                   />
                 </div>
+                {perExpenseExceeded && (
+                  <p className="flex items-center gap-1 text-sm text-warning">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    This category has a per-expense limit of {formatMoney(perExpenseLimit!)}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="currency">Currency</Label>
-                <Select value={currency} onValueChange={setCurrency}>
+                <Select value={currency} onValueChange={setCurrency} disabled={scanning}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select currency" />
                   </SelectTrigger>
@@ -166,7 +303,7 @@ const SubmitExpense: React.FC = () => {
 
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
-              <Select value={categoryId} onValueChange={setCategoryId} required>
+              <Select value={categoryId} onValueChange={setCategoryId} disabled={scanning} required>
                 <SelectTrigger>
                   <SelectValue placeholder="Select category" />
                 </SelectTrigger>
@@ -176,6 +313,30 @@ const SubmitExpense: React.FC = () => {
                   ))}
                 </SelectContent>
               </Select>
+              {loadingLimits && (
+                <p className="text-xs text-muted-foreground">Checking category limits...</p>
+              )}
+              {/* Monthly budget progress */}
+              {monthlyLimit != null && monthlySpend != null && (
+                <div className="space-y-1.5 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Monthly budget</span>
+                    <span className={`font-medium ${monthlyExceeded ? 'text-warning' : 'text-foreground'}`}>
+                      {formatMoney(monthlySpend)} of {formatMoney(monthlyLimit)} used this month
+                    </span>
+                  </div>
+                  <Progress
+                    value={monthlyProgress}
+                    className="h-1.5"
+                  />
+                  {monthlyExceeded && (
+                    <p className="flex items-center gap-1 text-xs text-warning">
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      This will exceed the monthly limit for this category
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -185,6 +346,7 @@ const SubmitExpense: React.FC = () => {
                 type="date"
                 value={expenseDate}
                 onChange={e => setExpenseDate(e.target.value)}
+                disabled={scanning}
                 required
               />
             </div>
@@ -197,30 +359,56 @@ const SubmitExpense: React.FC = () => {
                 rows={3}
                 value={description}
                 onChange={e => setDescription(e.target.value)}
+                disabled={scanning}
                 required
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="receipt">Receipt</Label>
-              <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-                onClick={() => document.getElementById('receipt-input')?.click()}>
-                <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  {receipt ? receipt.name : 'Click to upload or drag and drop'}
-                </p>
+              <div
+                className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${scanning ? 'border-primary/50 bg-primary/5' : 'hover:border-primary/50'}`}
+                onClick={() => !scanning && document.getElementById('receipt-input')?.click()}
+              >
+                {scanning ? (
+                  <Loader2 className="w-8 h-8 mx-auto text-primary animate-spin mb-2" />
+                ) : (
+                  <Upload className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                )}
+                <div className="flex items-center justify-center gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    {scanning ? 'Scanning receipt...' : receipt ? receipt.name : 'Click to upload or drag and drop'}
+                  </p>
+                  {ocrDone && receipt && !scanning && (
+                    <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+                      <CheckCircle2 className="w-3 h-3 mr-1" /> Scanned
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG up to 10MB</p>
                 <input
                   id="receipt-input"
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg"
                   className="hidden"
-                  onChange={e => setReceipt(e.target.files?.[0] || null)}
+                  onChange={handleReceiptChange}
+                  disabled={scanning}
                 />
               </div>
             </div>
 
-            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-info" disabled={loading}>
+            {/* Policy exception warning banner */}
+            {isPolicyException && (
+              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
+                <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+                <div className="text-sm">
+                  <p className="font-medium text-warning">Policy exception</p>
+                  <p className="text-muted-foreground">This expense exceeds a category limit. It will be flagged for reviewer attention.</p>
+                </div>
+              </div>
+            )}
+
+            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-accent" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Submit Expense
             </Button>

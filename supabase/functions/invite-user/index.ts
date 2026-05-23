@@ -114,14 +114,99 @@ Deno.serve(async (req) => {
       inviteOptions.redirectTo = redirectTo;
     }
 
-    const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, inviteOptions);
-    if (inviteError) {
-      return json(400, { error: inviteError.message });
+    // Use generateLink to get the action_link (magic link) instead of relying on Supabase internal mailer
+    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+      type: 'invite',
+      email,
+      options: inviteOptions,
+    });
+
+    if (linkError) {
+      return json(400, { error: linkError.message });
     }
 
-    const invitedUserId = inviteData.user?.id;
-    if (!invitedUserId) {
-      return json(500, { error: "Invite succeeded but user id was not returned" });
+    const invitedUserId = linkData.user?.id;
+    const actionLink = linkData.properties?.action_link;
+
+    if (!invitedUserId || !actionLink) {
+      return json(500, { error: "Invite succeeded but failed to generate action link" });
+    }
+
+    // Send custom Resend email
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL");
+    
+    if (!resendApiKey || !fromEmail) {
+      return json(500, { error: "Missing RESEND_API_KEY or RESEND_FROM_EMAIL in function environment" });
+    }
+
+    // Fetch org name
+    let orgName = "Zeptra";
+    const { data: orgData } = await admin
+      .from("organizations")
+      .select("name")
+      .eq("id", callerProfile.org_id)
+      .single();
+    if (orgData?.name) {
+      orgName = orgData.name;
+    }
+
+    // Fetch inviter name
+    let inviterName = "Someone";
+    const { data: inviterData } = await admin
+      .from("users")
+      .select("name")
+      .eq("id", callerId)
+      .single();
+    if (inviterData?.name) {
+      inviterName = inviterData.name;
+    }
+
+    const emailHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 20px;">
+    <div style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+      <div style="background:#6366f1;padding:24px 32px;">
+        <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Zeptra</h1>
+      </div>
+      <div style="padding:32px;">
+        <h2 style="margin:0 0 16px;color:#111827;font-size:20px;">Hi ${name},</h2>
+        <p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.5;">
+          <strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> as a <strong>${role}</strong> on Zeptra.
+        </p>
+        <a href="${actionLink}" style="display:inline-block;background:#6366f1;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation & Set Password</a>
+        <p style="margin:24px 0 0;color:#9ca3af;font-size:14px;">This link expires in 24 hours.</p>
+      </div>
+      <div style="padding:16px 32px;border-top:1px solid #e5e7eb;background:#f9fafb;">
+        <p style="margin:0;color:#9ca3af;font-size:12px;">If you didn't expect this invitation, you can safely ignore this email.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+    `;
+
+    const resendRes = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [email],
+        subject: `You've been invited to join ${orgName} on Zeptra`,
+        html: emailHtml,
+      }),
+    });
+
+    if (!resendRes.ok) {
+      const resendErr = await resendRes.json();
+      console.error("Failed to send invite email via Resend:", resendErr);
+      return json(500, { error: "Created user but failed to send invitation email." });
     }
 
     const { error: profileError } = await admin.from("users").upsert(

@@ -95,6 +95,7 @@ CREATE TABLE public.expenses (
   receipt_url TEXT,
   status public.expense_status DEFAULT 'pending_l1' NOT NULL,
   current_approver_id UUID REFERENCES auth.users(id),
+  is_policy_exception BOOLEAN DEFAULT false NOT NULL,
   submitted_at TIMESTAMPTZ DEFAULT now(),
   decided_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
@@ -370,6 +371,8 @@ BEGIN
   );
   -- Default role: employee
   INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'employee');
+  -- Default notification preferences
+  INSERT INTO public.notification_preferences (user_id) VALUES (NEW.id);
   RETURN NEW;
 END;
 $$;
@@ -427,6 +430,10 @@ BEGIN
   INSERT INTO public.org_currencies (org_id, code, symbol, name, is_default) VALUES
     (_org_id, 'USD', '$', 'US Dollar', true);
 
+  -- Seed a free subscription for the new org
+  INSERT INTO public.subscriptions (org_id, plan, status)
+  VALUES (_org_id, 'free', 'active');
+
   RETURN _org_id;
 END;
 $$;
@@ -459,4 +466,224 @@ BEGIN
   DELETE FROM public.user_roles WHERE user_id = _uid;
   INSERT INTO public.user_roles (user_id, role) VALUES (_uid, 'admin');
 END;
+$$;
+
+-- ============================================================
+-- 17. Subscriptions table (billing)
+-- ============================================================
+CREATE TABLE public.subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE UNIQUE,
+  stripe_customer_id TEXT,
+  stripe_subscription_id TEXT,
+  plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'enterprise')),
+  status TEXT NOT NULL DEFAULT 'active',
+  current_period_end TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Members can view own subscription" ON public.subscriptions
+  FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()));
+
+-- No INSERT/UPDATE/DELETE policies for authenticated users.
+-- Only service_role (edge functions) can write to this table.
+
+-- ============================================================
+-- 18. Plan limits table (reference data)
+-- ============================================================
+CREATE TABLE public.plan_limits (
+  plan TEXT PRIMARY KEY CHECK (plan IN ('free', 'pro', 'enterprise')),
+  max_users INT NOT NULL,
+  max_expenses_per_month INT NOT NULL,
+  has_analytics BOOLEAN NOT NULL DEFAULT false,
+  has_api BOOLEAN NOT NULL DEFAULT false
+);
+
+ALTER TABLE public.plan_limits ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Anyone can view plan limits" ON public.plan_limits
+  FOR SELECT TO authenticated USING (true);
+
+-- Seed plan limits (-1 = unlimited)
+INSERT INTO public.plan_limits (plan, max_users, max_expenses_per_month, has_analytics, has_api) VALUES
+  ('free',       5,  50, false, false),
+  ('pro',       50,  -1,  true, false),
+  ('enterprise', -1,  -1,  true,  true)
+ON CONFLICT (plan) DO NOTHING;
+
+-- ============================================================
+-- 19. Notification preferences
+-- ============================================================
+CREATE TABLE public.notification_preferences (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+  on_expense_submitted BOOLEAN NOT NULL DEFAULT true,
+  on_expense_approved BOOLEAN NOT NULL DEFAULT true,
+  on_expense_rejected BOOLEAN NOT NULL DEFAULT true,
+  on_approval_needed BOOLEAN NOT NULL DEFAULT true
+);
+
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view own notification prefs" ON public.notification_preferences
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Users can update own notification prefs" ON public.notification_preferences
+  FOR UPDATE TO authenticated
+  USING (user_id = auth.uid());
+
+-- Service role inserts via trigger; no client INSERT policy needed.
+-- Allow INSERT for the handle_new_user trigger (runs as SECURITY DEFINER).
+CREATE POLICY "System can insert notification prefs" ON public.notification_preferences
+  FOR INSERT
+  WITH CHECK (true);
+
+-- ============================================================
+-- 20. Expense notification triggers (via pg_net)
+-- ============================================================
+-- Enable the pg_net extension for async HTTP calls from triggers.
+-- This is available on Supabase paid plans and can be enabled in the SQL editor.
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
+
+CREATE OR REPLACE FUNCTION public.notify_expense_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _event TEXT;
+  _supabase_url TEXT;
+  _service_role_key TEXT;
+BEGIN
+  -- Determine the event type
+  IF TG_OP = 'INSERT' THEN
+    _event := 'submitted';
+  ELSIF TG_OP = 'UPDATE' THEN
+    -- Status changed to approved
+    IF NEW.status = 'approved' AND OLD.status != 'approved' THEN
+      _event := 'approved';
+    -- Status changed to rejected
+    ELSIF NEW.status = 'rejected' AND OLD.status != 'rejected' THEN
+      _event := 'rejected';
+    -- Approver changed (reassignment) while still pending
+    ELSIF NEW.current_approver_id IS DISTINCT FROM OLD.current_approver_id
+          AND NEW.current_approver_id IS NOT NULL
+          AND NEW.status IN ('pending_l1', 'pending_l2') THEN
+      _event := 'reassigned';
+    ELSE
+      -- No notification-worthy change
+      RETURN NEW;
+    END IF;
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  -- Read config (set via: ALTER DATABASE postgres SET app.settings.supabase_url = '...')
+  _supabase_url := current_setting('app.settings.supabase_url', true);
+  _service_role_key := current_setting('app.settings.service_role_key', true);
+
+  -- Skip if not configured
+  IF _supabase_url IS NULL OR _service_role_key IS NULL THEN
+    RAISE WARNING 'notify_expense_change: supabase_url or service_role_key not configured, skipping notification';
+    RETURN NEW;
+  END IF;
+
+  -- Fire-and-forget HTTP call to the send-notification edge function
+  BEGIN
+    PERFORM extensions.http_post(
+      url := _supabase_url || '/functions/v1/send-notification',
+      body := json_build_object('event', _event, 'expense_id', NEW.id)::text,
+      headers := json_build_object(
+        'Content-Type', 'application/json',
+        'Authorization', 'Bearer ' || _service_role_key
+      )::jsonb
+    );
+  EXCEPTION WHEN OTHERS THEN
+    -- Never block the expense transaction due to notification failure
+    RAISE WARNING 'notify_expense_change: failed to call send-notification: %', SQLERRM;
+  END;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Trigger on INSERT (new expense submitted)
+CREATE TRIGGER on_expense_inserted
+  AFTER INSERT ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.notify_expense_change();
+
+-- Trigger on UPDATE (status change, approver change)
+CREATE TRIGGER on_expense_updated
+  AFTER UPDATE ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.notify_expense_change();
+
+-- ============================================================
+-- 21. Category spend limits
+-- ============================================================
+CREATE TABLE public.category_limits (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  category_id UUID NOT NULL REFERENCES public.expense_categories(id) ON DELETE CASCADE UNIQUE,
+  monthly_limit DECIMAL(12,2),
+  per_expense_limit DECIMAL(12,2),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.category_limits ENABLE ROW LEVEL SECURITY;
+
+-- Org members can view limits
+CREATE POLICY "Org members can view category limits" ON public.category_limits
+  FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()));
+
+-- Admin can manage limits
+CREATE POLICY "Admin can insert category limits" ON public.category_limits
+  FOR INSERT TO authenticated
+  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Admin can update category limits" ON public.category_limits
+  FOR UPDATE TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
+  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
+
+CREATE POLICY "Admin can delete category limits" ON public.category_limits
+  FOR DELETE TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
+
+-- ============================================================
+-- 22. Policy exception flag on expenses
+-- ============================================================
+ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS is_policy_exception BOOLEAN DEFAULT false;
+UPDATE public.expenses SET is_policy_exception = false WHERE is_policy_exception IS NULL;
+ALTER TABLE public.expenses ALTER COLUMN is_policy_exception SET NOT NULL;
+
+-- ============================================================
+-- 23. Function: get monthly spend for a category
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.get_category_monthly_spend(
+  p_category_id UUID,
+  p_org_id UUID
+)
+RETURNS DECIMAL
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT COALESCE(SUM(e.amount), 0)
+  FROM public.expenses e
+  JOIN public.expense_categories c ON c.id = e.category_id
+  WHERE e.category_id = p_category_id
+    AND c.org_id = p_org_id
+    AND p_org_id = public.user_org_id(auth.uid())
+    AND e.status IN ('pending_l1', 'pending_l2', 'approved')
+    AND e.submitted_at >= date_trunc('month', now())
+    AND e.submitted_at < date_trunc('month', now()) + interval '1 month';
 $$;

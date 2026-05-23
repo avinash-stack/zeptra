@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Loader2, User, Mail, Building2, Phone, Lock } from 'lucide-react';
+import { Loader2, User, Mail, Building2, Phone, Lock, Bell } from 'lucide-react';
+import type { NotificationPreferences } from '@/types/database';
 
 const AccountSettings: React.FC = () => {
   const { profile, refreshProfile, user } = useAuth();
@@ -25,10 +27,49 @@ const AccountSettings: React.FC = () => {
     }
   }, [profile]);
 
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Notification preferences
+  const [notifPrefs, setNotifPrefs] = useState<NotificationPreferences | null>(null);
+  const [notifLoading, setNotifLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) fetchNotifPrefs();
+  }, [user]);
+
+  const fetchNotifPrefs = async () => {
+    if (!user) return;
+    setNotifLoading(true);
+    const { data } = await supabase
+      .from('notification_preferences')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+    setNotifPrefs(data as NotificationPreferences | null);
+    setNotifLoading(false);
+  };
+
+  const toggleNotifPref = async (key: keyof Pick<NotificationPreferences, 'on_expense_submitted' | 'on_expense_approved' | 'on_expense_rejected' | 'on_approval_needed'>) => {
+    if (!notifPrefs || !user) return;
+    const newVal = !notifPrefs[key];
+    // Optimistic update
+    setNotifPrefs({ ...notifPrefs, [key]: newVal });
+
+    const { error } = await supabase
+      .from('notification_preferences')
+      .update({ [key]: newVal })
+      .eq('user_id', user.id);
+
+    if (error) {
+      // Revert on failure
+      setNotifPrefs({ ...notifPrefs, [key]: !newVal });
+      toast.error('Failed to update preference');
+    } else {
+      toast.success('Notification preference updated');
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!user) return;
@@ -71,7 +112,6 @@ const AccountSettings: React.FC = () => {
       toast.error(error.message);
     } else {
       toast.success('Password updated successfully');
-      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     }
@@ -86,10 +126,17 @@ const AccountSettings: React.FC = () => {
     );
   }
 
+  const notifOptions = [
+    { key: 'on_approval_needed' as const, label: 'When an expense needs my approval', description: 'Get notified when a new expense is assigned to you for review' },
+    { key: 'on_expense_approved' as const, label: 'When my expense is approved', description: 'Get notified when your submitted expense is approved' },
+    { key: 'on_expense_rejected' as const, label: 'When my expense is rejected', description: 'Get notified when your submitted expense is rejected' },
+    { key: 'on_expense_submitted' as const, label: 'When someone submits an expense', description: 'Get notified about new expense submissions in your org' },
+  ];
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-info bg-clip-text text-transparent">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
           Account Settings
         </h1>
         <p className="text-muted-foreground mt-1">Update your personal information and security</p>
@@ -99,7 +146,7 @@ const AccountSettings: React.FC = () => {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-info flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center">
               <User className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
@@ -144,7 +191,7 @@ const AccountSettings: React.FC = () => {
             </div>
           </div>
 
-          <Button onClick={handleSaveProfile} disabled={savingProfile} className="w-full bg-gradient-to-r from-primary to-info">
+          <Button onClick={handleSaveProfile} disabled={savingProfile} className="w-full bg-gradient-to-r from-primary to-accent">
             {savingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Profile
           </Button>
@@ -177,6 +224,45 @@ const AccountSettings: React.FC = () => {
             {savingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Update Password
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Email Notifications */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-info to-info/70 flex items-center justify-center">
+              <Bell className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <CardTitle>Email Notifications</CardTitle>
+              <CardDescription>Choose which email notifications you receive</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {notifLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          ) : !notifPrefs ? (
+            <p className="text-sm text-muted-foreground py-4">Notification preferences not found. They will be created automatically on next login.</p>
+          ) : (
+            <div className="space-y-1">
+              {notifOptions.map(opt => (
+                <div key={opt.key} className="flex items-center justify-between py-3 border-b last:border-b-0">
+                  <div className="space-y-0.5 pr-4">
+                    <p className="text-sm font-medium">{opt.label}</p>
+                    <p className="text-xs text-muted-foreground">{opt.description}</p>
+                  </div>
+                  <Switch
+                    checked={notifPrefs[opt.key]}
+                    onCheckedChange={() => toggleNotifPref(opt.key)}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
