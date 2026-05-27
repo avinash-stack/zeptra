@@ -174,6 +174,11 @@ AS $$
 $$;
 
 -- ============================================================
+-- 9b. AI analysis column on expenses
+-- ============================================================
+ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS ai_analysis JSONB;
+
+-- ============================================================
 -- 10. Enable RLS
 -- ============================================================
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
@@ -687,3 +692,78 @@ AS $$
     AND e.submitted_at >= date_trunc('month', now())
     AND e.submitted_at < date_trunc('month', now()) + interval '1 month';
 $$;
+
+-- ============================================================
+-- 24. Org-scoped expense count for plan limits
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.org_expense_count_this_month(_org_id UUID)
+RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT COUNT(*) FROM public.expenses e
+  JOIN public.users u ON u.id = e.user_id
+  WHERE u.org_id = _org_id
+  AND e.created_at >= date_trunc('month', now());
+$$;
+
+-- ============================================================
+-- 25. GST details on expenses
+-- ============================================================
+ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS gst_details JSONB;
+
+-- ============================================================
+-- 26. SECURITY: Multi-org data isolation
+-- ============================================================
+
+-- Helper: has_any_role
+CREATE OR REPLACE FUNCTION public.has_any_role(_user_id UUID, _roles TEXT[])
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.user_roles 
+    WHERE user_id = _user_id AND role::text = ANY(_roles)
+  );
+$$;
+
+-- Helper: get all user IDs in the same org as the current user
+CREATE OR REPLACE FUNCTION public.org_user_ids(_org_id UUID)
+RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT id FROM public.users WHERE org_id = _org_id;
+$$;
+
+-- Drop and recreate expense SELECT policy to include org isolation
+DROP POLICY IF EXISTS "Employee sees own expenses" ON public.expenses;
+CREATE POLICY "User sees org-scoped expenses" ON public.expenses
+  FOR SELECT TO authenticated
+  USING (
+    -- Own expenses
+    user_id = auth.uid()
+    -- Or assigned approver
+    OR current_approver_id = auth.uid()
+    -- Or manager of submitter (existing helper)
+    OR public.is_manager_of(auth.uid(), user_id)
+    -- Or admin/finance, but ONLY within same org
+    OR (
+      public.has_any_role(auth.uid(), ARRAY['admin', 'finance'])
+      AND user_id IN (SELECT public.org_user_ids(public.user_org_id(auth.uid())))
+    )
+  );
+
+-- Audit log org isolation (admins only see their org's logs)
+DROP POLICY IF EXISTS "Admin sees audit log" ON public.audit_log;
+CREATE POLICY "Admin sees org audit log" ON public.audit_log
+  FOR SELECT TO authenticated
+  USING (
+    org_id = public.user_org_id(auth.uid())
+    AND public.has_role(auth.uid(), 'admin')
+  );
+
+-- Approval history: only see history for expenses you can see
+DROP POLICY IF EXISTS "View approval history" ON public.approval_history;
+CREATE POLICY "View org approval history" ON public.approval_history
+  FOR SELECT TO authenticated
+  USING (
+    expense_id IN (
+      SELECT id FROM public.expenses
+      WHERE user_id IN (SELECT public.org_user_ids(public.user_org_id(auth.uid())))
+        OR user_id = auth.uid()
+        OR current_approver_id = auth.uid()
+    )
+  );

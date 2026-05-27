@@ -7,6 +7,7 @@ import {
   Users,
   LogOut,
   Settings,
+  Shield,
 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { Link } from 'react-router-dom';
@@ -45,6 +46,7 @@ export function AppSidebar() {
   const adminItems = [
     { title: 'All Expenses', url: '/app/all-expenses', icon: List, show: hasAnyRole(['finance', 'admin']) },
     { title: 'User Management', url: '/app/users', icon: Users, show: hasRole('admin') || hasRole('hr') },
+    { title: 'Audit Log', url: '/app/audit', icon: Shield, show: hasRole('admin') },
     { title: 'Org Settings', url: '/app/settings', icon: Settings, show: hasRole('admin') },
   ];
 

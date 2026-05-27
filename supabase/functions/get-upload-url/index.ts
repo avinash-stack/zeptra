@@ -1,0 +1,135 @@
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+const json = (status: number, payload: Record<string, unknown>) =>
+  new Response(JSON.stringify(payload), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const textEncoder = new TextEncoder();
+
+async function hmac(key: Uint8Array | CryptoKey, data: string): Promise<Uint8Array> {
+  const cryptoKey = key instanceof CryptoKey
+    ? key
+    : await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, textEncoder.encode(data));
+  return new Uint8Array(signature);
+}
+
+async function sha256(data: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", textEncoder.encode(data));
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function toHex(buffer: Uint8Array): string {
+  return Array.from(buffer)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function getSignatureKey(
+  key: string,
+  dateStamp: string,
+  regionName: string,
+  serviceName: string,
+): Promise<Uint8Array> {
+  const kSecret = textEncoder.encode("AWS4" + key);
+  const kDate = await hmac(kSecret, dateStamp);
+  const kRegion = await hmac(kDate, regionName);
+  const kService = await hmac(kRegion, serviceName);
+  const kSigning = await hmac(kService, "aws4_request");
+  return kSigning;
+}
+
+async function createPresignedUrl(
+  accessKeyId: string,
+  secretAccessKey: string,
+  region: string,
+  bucket: string,
+  key: string,
+  expiresInSeconds = 300,
+) {
+  const method = "PUT";
+  const service = "s3";
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const endpoint = `https://${host}/${key}`;
+
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, ""); // YYYYMMDDTHHMMSSZ
+  const dateStamp = amzDate.substring(0, 8); // YYYYMMDD
+
+  // AWS requires URI encoding of path segments
+  const canonicalUri = "/" + key.split("/").map(encodeURIComponent).join("/");
+  
+  // Query string must be sorted by parameter name
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const credential = encodeURIComponent(`${accessKeyId}/${credentialScope}`);
+  const canonicalQuerystring = `X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=${credential}&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresInSeconds}&X-Amz-SignedHeaders=host`;
+
+  const canonicalHeaders = `host:${host}\n`;
+  const signedHeaders = "host";
+  const payloadHash = "UNSIGNED-PAYLOAD"; // standard for presigned URLs
+
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+  const canonicalRequestHash = await sha256(canonicalRequest);
+
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${canonicalRequestHash}`;
+
+  const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
+  const signature = toHex(await hmac(signingKey, stringToSign));
+
+  return `${endpoint}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return json(401, { error: "Missing bearer token" });
+    }
+
+    const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
+    const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
+    const region = Deno.env.get("AWS_REGION");
+    const bucket = Deno.env.get("AWS_S3_BUCKET");
+
+    if (!accessKeyId || !secretAccessKey || !region || !bucket) {
+      console.error("AWS credentials or S3 bucket not configured properly");
+      return json(500, { error: "AWS configuration missing" });
+    }
+
+    const body = await req.json().catch(() => null);
+    if (!body?.file_name || !body?.user_id) {
+      return json(400, { error: "file_name and user_id are required" });
+    }
+
+    const sanitizedFileName = body.file_name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `receipts/${body.user_id}/${Date.now()}-${sanitizedFileName}`;
+
+    const upload_url = await createPresignedUrl(
+      accessKeyId,
+      secretAccessKey,
+      region,
+      bucket,
+      key,
+    );
+
+    const public_url = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
+
+    return json(200, { upload_url, public_url });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("get-upload-url error:", message);
+    return json(500, { error: "Failed to generate upload URL" });
+  }
+});

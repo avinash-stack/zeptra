@@ -19,6 +19,7 @@ import OrgSettings from "@/pages/OrgSettings";
 import AccountSettings from "@/pages/AccountSettings";
 import Help from "@/pages/Help";
 import ProfilePage from "@/pages/Profile";
+import AuditLog from "@/pages/AuditLog";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -98,6 +99,11 @@ const App = () => (
               <Route path="settings" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <OrgSettings />
+                </ProtectedRoute>
+              } />
+              <Route path="audit" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AuditLog />
                 </ProtectedRoute>
               } />
               <Route path="account" element={<AccountSettings />} />

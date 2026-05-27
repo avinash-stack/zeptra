@@ -70,14 +70,9 @@ export function usePlanLimit(): PlanLimitState {
       setUserCount(uCount || 0);
 
       // Count expenses this month for this org's users
-      const now = new Date();
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-      const { count: eCount } = await supabase
-        .from('expenses')
-        .select('id', { count: 'exact', head: true })
-        .gte('created_at', startOfMonth);
-
-      setExpenseCount(eCount || 0);
+      const { data: eCount } = await supabase
+        .rpc('org_expense_count_this_month', { _org_id: orgId });
+      setExpenseCount(Number(eCount) || 0);
     } catch (err) {
       console.error('usePlanLimit fetch error:', err);
     } finally {

@@ -148,3 +148,19 @@ export interface CategoryLimit {
   created_at: string;
   updated_at: string;
 }
+
+// ---- Audit Log ----
+
+export interface AuditLog {
+  id: string;
+  org_id: string;
+  actor_id: string | null;
+  entity_type: 'expense' | 'user' | 'organization' | 'category' | 'approval';
+  entity_id: string;
+  action: 'created' | 'updated' | 'approved' | 'rejected' | 'reassigned' |
+    'invited' | 'deactivated' | 'activated' | 'exported' | 'deleted';
+  changes: Record<string, unknown> | null;
+  created_at: string;
+  // Joined fields
+  actor?: { name: string; email: string } | null;
+}

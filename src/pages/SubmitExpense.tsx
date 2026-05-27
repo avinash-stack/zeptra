@@ -9,17 +9,64 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Loader2, Upload, CheckCircle2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Loader2, Upload, CheckCircle2, AlertTriangle, CheckCircle, Sparkles, ChevronsUpDown, Receipt } from 'lucide-react';
 import type { ExpenseCategory, OrgCurrency, CategoryLimit } from '@/types/database';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+const expenseSchema = z.object({
+  amount: z.string()
+    .min(1, 'Amount is required')
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'Amount must be a positive number')
+    .refine(v => parseFloat(v) <= 10_000_000, 'Amount seems too large — please verify'),
+  currency: z.string().min(1, 'Currency is required'),
+  categoryId: z.string().uuid('Please select a category'),
+  description: z.string()
+    .min(5, 'Description must be at least 5 characters')
+    .max(500, 'Description must be under 500 characters'),
+  expenseDate: z.string()
+    .min(1, 'Date is required')
+    .refine(v => {
+      const d = new Date(v);
+      const today = new Date();
+      const oneYearAgo = new Date();
+      oneYearAgo.setFullYear(today.getFullYear() - 1);
+      return d <= today && d >= oneYearAgo;
+    }, 'Date must be within the last year and not in the future'),
+  gstNumber: z.string()
+    .optional()
+    .refine(v => !v || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v), 
+      'Invalid GSTIN format (must be 15 characters)'),
+});
+
+type ExpenseFormValues = z.infer<typeof expenseSchema>;
 
 const SubmitExpense: React.FC = () => {
   const { user, profile } = useAuth();
-  const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [description, setDescription] = useState('');
-  const [expenseDate, setExpenseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  
+  const { control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<ExpenseFormValues>({
+    resolver: zodResolver(expenseSchema),
+    defaultValues: {
+      amount: '',
+      currency: '',
+      categoryId: '',
+      description: '',
+      expenseDate: new Date().toISOString().slice(0, 10),
+      gstNumber: '',
+    }
+  });
+
+  const amount = watch('amount');
+  const currency = watch('currency');
+  const categoryId = watch('categoryId');
+  const description = watch('description');
+  const expenseDate = watch('expenseDate');
+  const gstNumber = watch('gstNumber');
+
   const [receipt, setReceipt] = useState<File | null>(null);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [currencies, setCurrencies] = useState<OrgCurrency[]>([]);
@@ -29,6 +76,20 @@ const SubmitExpense: React.FC = () => {
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState(false);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+
+  // AI category suggestion states
+  const [suggestedCategory, setSuggestedCategory] = useState<{ id: string; name: string } | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+
+  // GST states
+  const [cgst, setCgst] = useState('');
+  const [sgst, setSgst] = useState('');
+  const [igst, setIgst] = useState('');
+  const [totalGst, setTotalGst] = useState('');
+  const [hsnCodes, setHsnCodes] = useState<{code: string; description: string; amount: number}[]>([]);
+  const [gstMode, setGstMode] = useState<'intra' | 'inter'>('intra');
+  const [gstOpen, setGstOpen] = useState(false);
 
   // Policy limit states
   const [categoryLimit, setCategoryLimit] = useState<CategoryLimit | null>(null);
@@ -59,11 +120,11 @@ const SubmitExpense: React.FC = () => {
         if (data) {
           setCurrencies(data as OrgCurrency[]);
           const defaultCurr = (data as OrgCurrency[]).find(c => c.is_default);
-          if (defaultCurr) setCurrency(defaultCurr.code);
-          else if (data.length > 0) setCurrency((data[0] as OrgCurrency).code);
+          if (defaultCurr) setValue('currency', defaultCurr.code);
+          else if (data.length > 0) setValue('currency', (data[0] as OrgCurrency).code);
         }
       });
-  }, [profile?.org_id]);
+  }, [profile?.org_id, setValue]);
 
   // Fetch category limits when category changes
   useEffect(() => {
@@ -121,15 +182,55 @@ const SubmitExpense: React.FC = () => {
     : 0;
   const isPolicyException = perExpenseExceeded || monthlyExceeded;
 
+  const handleDescriptionBlur = async () => {
+    if (
+      description.length < 10 ||
+      categoryId ||
+      suggesting ||
+      suggestionDismissed ||
+      categories.length === 0
+    ) return;
+
+    setSuggesting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-category', {
+        body: {
+          description,
+          categories: categories.map(c => ({ id: c.id, name: c.name })),
+        },
+      });
+      if (!error && data?.id) {
+        setSuggestedCategory(data);
+      }
+    } catch {
+      // Silent fail
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   const uploadReceipt = async (file: File): Promise<string | null> => {
     if (!user) return null;
     try {
-      const ext = file.name.split('.').pop();
-      const path = `${user.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage.from('receipts').upload(path, file);
-      if (error) return null;
-      const { data } = supabase.storage.from('receipts').getPublicUrl(path);
-      return data.publicUrl;
+      // Get pre-signed URL from edge function
+      const { data, error } = await supabase.functions.invoke('get-upload-url', {
+        body: { 
+          file_name: file.name, 
+          file_type: file.type,
+          user_id: user.id 
+        }
+      });
+      if (error || !data?.upload_url) return null;
+      
+      // Upload directly to S3
+      const uploadRes = await fetch(data.upload_url, {
+        method: 'PUT',
+        body: file,
+        headers: { 'Content-Type': file.type }
+      });
+      if (!uploadRes.ok) return null;
+      
+      return data.public_url;
     } catch {
       return null;
     }
@@ -150,10 +251,19 @@ const SubmitExpense: React.FC = () => {
         body: { receipt_url: url },
       });
       if (!error && data) {
-        if (data.amount && !amount) setAmount(String(data.amount));
-        if (data.date) setExpenseDate(data.date);
-        if (data.description && !description) setDescription(data.description);
-        if (data.amount || data.date || data.description) {
+        if (data.amount && !amount) setValue('amount', String(data.amount));
+        if (data.date) setValue('expenseDate', data.date);
+        if (data.suggested_description && !description) setValue('description', data.suggested_description);
+        // GST pre-fills
+        if (data.gst_number) setValue('gstNumber', data.gst_number);
+        if (data.cgst != null) { setCgst(String(data.cgst)); setGstMode('intra'); }
+        if (data.sgst != null) setSgst(String(data.sgst));
+        if (data.igst != null) { setIgst(String(data.igst)); setGstMode('inter'); }
+        if (data.total_gst_amount != null) setTotalGst(String(data.total_gst_amount));
+        if (data.hsn_codes?.length) setHsnCodes(data.hsn_codes);
+        // Auto-open GST section if GST data was found
+        if (data.gst_number || data.cgst != null || data.igst != null) setGstOpen(true);
+        if (data.amount || data.date || data.suggested_description) {
           toast.info('Receipt scanned — please review the details');
           setScanned(true);
         }
@@ -165,28 +275,16 @@ const SubmitExpense: React.FC = () => {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: ExpenseFormValues) => {
     if (!user) return;
-    if (!categoryId) {
-      toast.error('Please select a category');
-      return;
-    }
-    if (!expenseDate) {
-      toast.error('Please select an expense date');
-      return;
-    }
     setLoading(true);
 
     try {
       let finalReceiptUrl = receiptUrl;
       if (receipt && !receiptUrl) {
-        const ext = receipt.name.split('.').pop();
-        const path = `${user.id}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage.from('receipts').upload(path, receipt);
-        if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(path);
-        finalReceiptUrl = urlData.publicUrl;
+        const url = await uploadReceipt(receipt);
+        if (!url) throw new Error('Failed to upload receipt');
+        finalReceiptUrl = url;
       }
 
       // Get manager for L1 approval
@@ -198,29 +296,42 @@ const SubmitExpense: React.FC = () => {
 
       const { error } = await supabase.from('expenses').insert({
         user_id: user.id,
-        amount: parseFloat(amount),
-        currency: currency || 'INR',
-        category_id: categoryId,
-        description,
+        amount: parseFloat(data.amount),
+        currency: data.currency || 'INR',
+        category_id: data.categoryId,
+        description: data.description,
         receipt_url: finalReceiptUrl,
         status: 'pending_l1',
         current_approver_id: profileData?.manager_id || null,
-        submitted_at: new Date(`${expenseDate}T12:00:00`).toISOString(),
+        submitted_at: new Date(`${data.expenseDate}T12:00:00`).toISOString(),
         is_policy_exception: isPolicyException,
+        gst_details: data.gstNumber || cgst || sgst || igst ? {
+          gstin: data.gstNumber || null,
+          cgst: cgst ? parseFloat(cgst) : null,
+          sgst: sgst ? parseFloat(sgst) : null,
+          igst: igst ? parseFloat(igst) : null,
+          total_gst: totalGst ? parseFloat(totalGst) : null,
+          hsn_codes: hsnCodes.length ? hsnCodes : null,
+        } : null,
       });
 
       if (error) throw error;
 
       toast.success('Expense submitted successfully!');
-      setAmount('');
-      setCategoryId('');
-      setDescription('');
-      setExpenseDate(new Date().toISOString().slice(0, 10));
+      reset();
       setReceipt(null);
       setReceiptUrl(null);
       setScanned(false);
+      setSuggestedCategory(null);
+      setSuggestionDismissed(false);
       setCategoryLimit(null);
       setMonthlySpend(null);
+      setCgst('');
+      setSgst('');
+      setIgst('');
+      setTotalGst('');
+      setHsnCodes([]);
+      setGstOpen(false);
     } catch (error: any) {
       toast.error(error.message || 'Failed to submit expense');
     } finally {
@@ -230,7 +341,7 @@ const SubmitExpense: React.FC = () => {
 
   // Find the symbol for the selected currency
   const selectedCurr = currencies.find(c => c.code === currency);
-  const currSymbol = selectedCurr?.symbol || '$';
+  const currSymbol = selectedCurr?.symbol || '₹';
   const formatMoney = (value: number) =>
     `${currSymbol}${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
@@ -245,7 +356,7 @@ const SubmitExpense: React.FC = () => {
 
       <Card>
         <CardContent className="pt-6">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="amount">Amount</Label>
@@ -253,19 +364,24 @@ const SubmitExpense: React.FC = () => {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">
                     {currSymbol}
                   </span>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    placeholder="0.00"
-                    className="pl-8"
-                    value={amount}
-                    onChange={e => setAmount(e.target.value)}
-                    disabled={scanning}
-                    required
+                  <Controller
+                    control={control}
+                    name="amount"
+                    render={({ field }) => (
+                      <Input
+                        id="amount"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        className="pl-8"
+                        disabled={scanning || isSubmitting}
+                        {...field}
+                      />
+                    )}
                   />
                 </div>
+                {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
                 {perExpenseExceeded && (
                   <p className="flex items-center gap-1 text-sm text-warning">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -275,33 +391,47 @@ const SubmitExpense: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="currency">Currency</Label>
-                <Select value={currency} onValueChange={setCurrency} disabled={scanning}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select currency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currencies.map(curr => (
-                      <SelectItem key={curr.id} value={curr.code}>
-                        {curr.symbol} {curr.code} — {curr.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Controller
+                  control={control}
+                  name="currency"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange} disabled={scanning || isSubmitting}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select currency" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {currencies.map(curr => (
+                          <SelectItem key={curr.id} value={curr.code}>
+                            {curr.symbol} {curr.code} — {curr.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+                {errors.currency && <p className="text-xs text-destructive">{errors.currency.message}</p>}
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
-              <Select value={categoryId} onValueChange={setCategoryId} disabled={scanning} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller
+                control={control}
+                name="categoryId"
+                render={({ field }) => (
+                  <Select value={field.value} onValueChange={field.onChange} disabled={scanning || isSubmitting}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map(cat => (
+                        <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              />
+              {errors.categoryId && <p className="text-xs text-destructive">{errors.categoryId.message}</p>}
               {loadingLimits && (
                 <p className="text-xs text-muted-foreground">Checking category limits...</p>
               )}
@@ -330,28 +460,86 @@ const SubmitExpense: React.FC = () => {
 
             <div className="space-y-2">
               <Label htmlFor="expense-date">Expense Date</Label>
-              <Input
-                id="expense-date"
-                type="date"
-                value={expenseDate}
-                onChange={e => setExpenseDate(e.target.value)}
-                disabled={scanning}
-                required
+              <Controller
+                control={control}
+                name="expenseDate"
+                render={({ field }) => (
+                  <Input
+                    id="expense-date"
+                    type="date"
+                    disabled={scanning || isSubmitting}
+                    {...field}
+                  />
+                )}
               />
+              {errors.expenseDate && <p className="text-xs text-destructive">{errors.expenseDate.message}</p>}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                placeholder="Describe the expense..."
-                rows={3}
-                value={description}
-                onChange={e => setDescription(e.target.value)}
-                disabled={scanning}
-                required
+              <Controller
+                control={control}
+                name="description"
+                render={({ field }) => (
+                  <Textarea
+                    id="description"
+                    placeholder="Describe the expense..."
+                    rows={3}
+                    disabled={scanning || isSubmitting}
+                    {...field}
+                    onChange={(e) => {
+                      field.onChange(e);
+                      if (suggestedCategory) setSuggestedCategory(null);
+                    }}
+                    onBlur={(e) => {
+                      field.onBlur();
+                      handleDescriptionBlur();
+                    }}
+                  />
+                )}
               />
+              {errors.description && <p className="text-xs text-destructive">{errors.description.message}</p>}
             </div>
+
+            {suggesting && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Suggesting category...
+              </div>
+            )}
+
+            {suggestedCategory && !categoryId && !suggestionDismissed && (
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
+                <span className="text-sm text-foreground flex-1">
+                  Suggested: <span className="font-medium">{suggestedCategory.name}</span>
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="default"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setValue('categoryId', suggestedCategory.id);
+                    setSuggestedCategory(null);
+                  }}
+                >
+                  Use this
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    setSuggestionDismissed(true);
+                    setSuggestedCategory(null);
+                  }}
+                >
+                  Dismiss
+                </Button>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="receipt">Receipt</Label>
@@ -394,19 +582,170 @@ const SubmitExpense: React.FC = () => {
               </div>
             </div>
 
+            {/* GST Details (Optional) — collapsible section */}
+            <Collapsible open={gstOpen} onOpenChange={setGstOpen}>
+              <CollapsibleTrigger asChild>
+                <Button type="button" variant="ghost" className="flex w-full items-center justify-between px-0 hover:bg-transparent">
+                  <span className="flex items-center gap-2 text-sm font-medium">
+                    <Receipt className="w-4 h-4 text-muted-foreground" />
+                    GST Details (Optional)
+                  </span>
+                  <ChevronsUpDown className="w-4 h-4 text-muted-foreground" />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 pt-2">
+                {/* GSTIN */}
+                <div className="space-y-2">
+                  <Label htmlFor="gstin">GSTIN</Label>
+                  <Controller
+                    control={control}
+                    name="gstNumber"
+                    render={({ field }) => (
+                      <Input
+                        id="gstin"
+                        placeholder="22AAAAA0000A1Z5"
+                        maxLength={15}
+                        {...field}
+                        value={field.value || ''}
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        className={errors.gstNumber ? 'border-destructive' : ''}
+                      />
+                    )}
+                  />
+                  {errors.gstNumber && <p className="text-xs text-destructive">{errors.gstNumber.message}</p>}
+                </div>
+
+                {/* Intra / Inter toggle */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={gstMode === 'intra' ? 'default' : 'outline'}
+                    className="h-7 text-xs"
+                    onClick={() => { setGstMode('intra'); setIgst(''); }}
+                  >
+                    Intra-state (CGST + SGST)
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={gstMode === 'inter' ? 'default' : 'outline'}
+                    className="h-7 text-xs"
+                    onClick={() => { setGstMode('inter'); setCgst(''); setSgst(''); }}
+                  >
+                    Inter-state (IGST)
+                  </Button>
+                </div>
+
+                {gstMode === 'intra' ? (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="cgst">CGST (₹)</Label>
+                      <Input
+                        id="cgst"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={cgst}
+                        onChange={e => {
+                          setCgst(e.target.value);
+                          const c = parseFloat(e.target.value) || 0;
+                          const s = parseFloat(sgst) || 0;
+                          setTotalGst((c + s).toFixed(2));
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="sgst">SGST (₹)</Label>
+                      <Input
+                        id="sgst"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={sgst}
+                        onChange={e => {
+                          setSgst(e.target.value);
+                          const s = parseFloat(e.target.value) || 0;
+                          const c = parseFloat(cgst) || 0;
+                          setTotalGst((c + s).toFixed(2));
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label htmlFor="igst">IGST (₹)</Label>
+                    <Input
+                      id="igst"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      placeholder="0.00"
+                      value={igst}
+                      onChange={e => {
+                        setIgst(e.target.value);
+                        setTotalGst(e.target.value);
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Total GST — read-only, auto-computed */}
+                <div className="space-y-2">
+                  <Label htmlFor="total-gst">Total GST Amount (₹)</Label>
+                  <Input
+                    id="total-gst"
+                    type="number"
+                    value={totalGst}
+                    readOnly
+                    className="bg-muted/50"
+                  />
+                </div>
+
+                {/* HSN codes table */}
+                {hsnCodes.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>HSN Codes</Label>
+                    <div className="border rounded-lg overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs">Code</TableHead>
+                            <TableHead className="text-xs">Description</TableHead>
+                            <TableHead className="text-xs text-right">Amount</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {hsnCodes.map((hsn, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="text-xs font-mono">{hsn.code}</TableCell>
+                              <TableCell className="text-xs">{hsn.description}</TableCell>
+                              <TableCell className="text-xs text-right">₹{Number(hsn.amount).toFixed(2)}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
+
             {/* Policy exception warning banner */}
             {isPolicyException && (
-              <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
-                <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
-                <div className="text-sm">
-                  <p className="font-medium text-warning">Policy exception</p>
-                  <p className="text-muted-foreground">This expense exceeds a category limit. It will be flagged for reviewer attention.</p>
-                </div>
-              </div>
-            )}
+               <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 p-3">
+                 <AlertTriangle className="w-4 h-4 text-warning mt-0.5 shrink-0" />
+                 <div className="text-sm">
+                   <p className="font-medium text-warning">Policy exception</p>
+                   <p className="text-muted-foreground">This expense exceeds a category limit. It will be flagged for reviewer attention.</p>
+                 </div>
+               </div>
+             )}
 
-            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-accent" disabled={loading}>
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-accent" disabled={loading || isSubmitting}>
+              {(loading || isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Submit Expense
             </Button>
           </form>

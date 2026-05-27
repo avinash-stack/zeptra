@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { AlertTriangle, CheckCircle, XCircle, ArrowRight, Search } from 'lucide-react';
+import { RiskBadge } from '@/components/RiskBadge';
 import type { ExpenseWithDetails, Profile } from '@/types/database';
 
 const Approvals: React.FC = () => {
@@ -25,6 +26,29 @@ const Approvals: React.FC = () => {
   const [reassignTo, setReassignTo] = useState('');
   const [reassignCandidates, setReassignCandidates] = useState<Profile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
+
+  const analyzeExpense = async (expenseId: string) => {
+    setAnalyzingIds(prev => new Set(prev).add(expenseId));
+    try {
+      const { data } = await supabase.functions.invoke('analyze-expense', {
+        body: { expense_id: expenseId },
+      });
+      if (data) {
+        setExpenses(prev =>
+          prev.map(e => e.id === expenseId ? { ...e, ai_analysis: data } : e)
+        );
+      }
+    } catch {
+      // Silent fail — AI analysis is advisory only
+    } finally {
+      setAnalyzingIds(prev => {
+        const next = new Set(prev);
+        next.delete(expenseId);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     fetchPendingExpenses();
@@ -60,6 +84,17 @@ const Approvals: React.FC = () => {
         users: profileMap.get(e.user_id) || null,
       }));
       setExpenses(enriched as ExpenseWithDetails[]);
+
+      // Auto-analyze expenses without existing analysis
+      const analyzeSequentially = async (expenses: any[]) => {
+        for (const expense of expenses) {
+          if (!expense.ai_analysis) {
+            await analyzeExpense(expense.id);
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      };
+      setTimeout(() => analyzeSequentially(enriched), 500);
     } else {
       setExpenses([]);
     }
@@ -77,6 +112,10 @@ const Approvals: React.FC = () => {
   };
 
   const handleApprove = async (expense: ExpenseWithDetails) => {
+    if (expense.user_id === user!.id) {
+      toast.error("You cannot approve or reject your own expense");
+      return;
+    }
     try {
       const isFinance = hasAnyRole(['finance']);
 
@@ -147,6 +186,10 @@ const Approvals: React.FC = () => {
   };
 
   const handleReject = async (expense: ExpenseWithDetails) => {
+    if (expense.user_id === user!.id) {
+      toast.error("You cannot approve or reject your own expense");
+      return;
+    }
     try {
       await supabase.from('expenses').update({
         status: 'rejected',
@@ -232,6 +275,7 @@ const Approvals: React.FC = () => {
                 <TableHead>Category</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Amount</TableHead>
+                <TableHead>Risk</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
@@ -239,7 +283,7 @@ const Approvals: React.FC = () => {
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                     No pending approvals
                   </TableCell>
                 </TableRow>
@@ -249,10 +293,16 @@ const Approvals: React.FC = () => {
                   <TableCell>{new Date(expense.submitted_at).toLocaleDateString()}</TableCell>
                   <TableCell>{(expense as any).expense_categories?.name || '-'}</TableCell>
                   <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
-                  <TableCell className="font-medium">
+                  <TableCell>
                     {expense.currency === 'INR' ? '₹' : expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$'}
                     {Number(expense.amount).toFixed(2)}
                     <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
+                  </TableCell>
+                  <TableCell>
+                    <RiskBadge
+                      analysis={(expense as any).ai_analysis}
+                      loading={analyzingIds.has(expense.id)}
+                    />
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col items-start gap-1">

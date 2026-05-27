@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Search, CheckCircle, XCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { exportToCSV, exportToTallyXML } from '@/lib/exportUtils';
+import { logAudit } from '@/lib/auditLogger';
 import type { ExpenseWithDetails } from '@/types/database';
 
 const AllExpenses: React.FC = () => {
@@ -116,6 +117,16 @@ const AllExpenses: React.FC = () => {
     if (!expenses.length) { toast.error('No expenses to export'); return; }
     exportToCSV(expenses, organization?.name || 'Zeptra');
     toast.success(`Exported ${expenses.length} expenses as CSV`);
+    if (user && organization) {
+      logAudit({
+        org_id: organization.id,
+        actor_id: user.id,
+        entity_type: 'organization',
+        entity_id: organization.id,
+        action: 'exported',
+        changes: { type: 'csv', count: expenses.length },
+      });
+    }
   };
 
   const handleExportTally = () => {
@@ -123,6 +134,16 @@ const AllExpenses: React.FC = () => {
     if (!approved.length) { toast.error('No approved expenses to export for Tally'); return; }
     exportToTallyXML(expenses, organization?.name || 'Zeptra');
     toast.success(`Exported ${approved.length} approved expenses as Tally XML`);
+    if (user && organization) {
+      logAudit({
+        org_id: organization.id,
+        actor_id: user.id,
+        entity_type: 'organization',
+        entity_id: organization.id,
+        action: 'exported',
+        changes: { type: 'tally_xml', count: approved.length },
+      });
+    }
   };
 
   return (

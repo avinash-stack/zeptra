@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receipt, Plus, Download } from 'lucide-react';
+import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receipt, Plus, Download, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import type { OrgCurrency } from '@/types/database';
 
@@ -16,7 +16,7 @@ const COLORS = ['hsl(262, 83%, 58%)', 'hsl(38, 92%, 50%)', 'hsl(142, 71%, 45%)',
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, profile, hasRole, hasAnyRole, isManager } = useAuth();
-  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, totalAmount: 0 });
+  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, totalAmount: 0, flagged: 0 });
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<'30d' | '90d' | 'year' | 'all'>('all');
   const [allExpenses, setAllExpenses] = useState<any[]>([]);
@@ -89,7 +89,11 @@ const Dashboard: React.FC = () => {
         const pending = expenses.filter(e => e.status === 'pending_l1' || e.status === 'pending_l2').length;
         const rejected = expenses.filter(e => e.status === 'rejected').length;
         const totalAmount = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
-        setStats({ total, approved, pending, rejected, totalAmount });
+        const flagged = expenses.filter((e: any) =>
+          e.ai_analysis?.risk_level === 'medium' ||
+          e.ai_analysis?.risk_level === 'high'
+        ).length;
+        setStats({ total, approved, pending, rejected, totalAmount, flagged });
 
         // Monthly data
         const months: Record<string, number> = {};
@@ -221,6 +225,12 @@ const Dashboard: React.FC = () => {
               <StatsCard title="Approved" value={stats.approved} icon={CheckCircle} iconClassName="bg-gradient-to-br from-success to-success/70" />
               <StatsCard title="Avg per expense" value={`${defaultCurrSymbol}${stats.total > 0 ? (stats.totalAmount / stats.total).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}`} icon={TrendingUp} iconClassName="bg-gradient-to-br from-info to-info/70" />
               <StatsCard title="Rejection rate" value={`${stats.total > 0 ? ((stats.rejected / stats.total) * 100).toFixed(1) : '0'}%`} icon={XCircle} iconClassName="bg-gradient-to-br from-destructive to-destructive/70" />
+              <div
+                className={`cursor-pointer transition-colors rounded-lg ${stats.flagged > 0 ? 'ring-1 ring-amber-300 hover:ring-amber-400' : ''}`}
+                onClick={() => stats.flagged > 0 && navigate('/app/approvals')}
+              >
+                <StatsCard title="Flagged by AI" value={stats.flagged} icon={AlertTriangle} iconClassName="bg-gradient-to-br from-amber-500 to-amber-400" description={stats.flagged > 0 ? 'Medium or high risk' : 'No flagged expenses'} />
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

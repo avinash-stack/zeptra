@@ -49,3 +49,20 @@ insert into public.user_roles (user_id, role)
 values ('<USER_ID>', 'admin')
 on conflict (user_id, role) do nothing;
 ```
+
+## AWS S3 Setup
+
+The application uses AWS S3 via pre-signed URLs to handle receipt file uploads natively from the browser. To make this work, the `get-upload-url` edge function requires the following environment variables:
+
+- `AWS_ACCESS_KEY_ID`: Your IAM user access key.
+- `AWS_SECRET_ACCESS_KEY`: Your IAM user secret access key.
+- `AWS_REGION`: The AWS region where your bucket is located (e.g., `us-east-1`).
+- `AWS_S3_BUCKET`: The name of the S3 bucket to store uploaded receipts.
+
+Ensure these secrets are set in your Supabase environment:
+```bash
+supabase secrets set AWS_ACCESS_KEY_ID=your_key \
+                     AWS_SECRET_ACCESS_KEY=your_secret \
+                     AWS_REGION=your_region \
+                     AWS_S3_BUCKET=your_bucket
+```
