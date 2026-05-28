@@ -175,6 +175,7 @@ Flags examples (use only what actually applies):
 "No expense history in this category"
 "Very high absolute amount"`;
 
+    let text = "{}";
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -189,13 +190,31 @@ Flags examples (use only what actually applies):
       }),
     });
 
-    if (!claudeRes.ok) {
-      console.error("Anthropic API error:", await claudeRes.text());
-      return json(502, { error: "AI provider failed" });
+    if (claudeRes.ok) {
+      const claudeData = await claudeRes.json();
+      text = claudeData.content?.[0]?.text?.trim() || "{}";
+    } else {
+      console.warn("Anthropic API failed, falling back to Gemini:", await claudeRes.text());
+      const geminiKey = Deno.env.get("GEMINI_API_KEY");
+      if (!geminiKey) {
+         return json(502, { error: "AI provider failed and no fallback configured" });
+      }
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { maxOutputTokens: 200, responseMimeType: "application/json" }
+        })
+      });
+      if (!geminiRes.ok) {
+         console.error("Gemini fallback failed:", await geminiRes.text());
+         return json(502, { error: "All AI providers failed" });
+      }
+      const geminiData = await geminiRes.json();
+      text = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "{}";
     }
 
-    const claudeData = await claudeRes.json();
-    const text = claudeData.content?.[0]?.text?.trim() || "{}";
     const clean = text.replace(/```json|```/g, "").trim();
 
     let analysis = { ...defaultAnalysis };

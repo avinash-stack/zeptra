@@ -24,7 +24,7 @@ CREATE TABLE public.organizations (
   slug TEXT NOT NULL UNIQUE,
   corporate_email TEXT NOT NULL,
   business_phone TEXT,
-  created_by UUID REFERENCES auth.users(id),
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -47,7 +47,7 @@ CREATE TABLE public.org_currencies (
 -- ============================================================
 CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  org_id UUID REFERENCES public.organizations(id),
+  org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   email TEXT NOT NULL,
   first_name TEXT,
@@ -598,7 +598,8 @@ CREATE TABLE public.subscriptions (
   status TEXT NOT NULL DEFAULT 'active',
   current_period_end TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  last_event_timestamp TIMESTAMPTZ
 );
 
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
@@ -815,7 +816,7 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF OLD.status = 'pending_l1' AND NEW.status IN ('pending_l2', 'rejected') THEN
+  IF OLD.status = 'pending_l1' AND NEW.status IN ('pending_l2', 'approved', 'rejected') THEN
     RETURN NEW;
   END IF;
 
@@ -829,6 +830,32 @@ $$;
 DROP TRIGGER IF EXISTS enforce_expense_status_transition ON public.expenses;
 CREATE TRIGGER enforce_expense_status_transition BEFORE INSERT OR UPDATE ON public.expenses
   FOR EACH ROW EXECUTE FUNCTION public.enforce_expense_status_transition();
+
+CREATE OR REPLACE FUNCTION public.enforce_plan_limits()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _plan TEXT;
+  _max_expenses INT;
+  _current_count BIGINT;
+BEGIN
+  SELECT plan INTO _plan FROM public.subscriptions WHERE org_id = NEW.org_id;
+  IF _plan IS NULL THEN _plan := 'free'; END IF;
+
+  SELECT max_expenses_per_month INTO _max_expenses FROM public.plan_limits WHERE plan = _plan;
+
+  IF _max_expenses IS NOT NULL THEN
+    SELECT public.org_expense_count_this_month(NEW.org_id) INTO _current_count;
+    IF _current_count >= _max_expenses THEN
+      RAISE EXCEPTION 'Plan limit reached: Maximum expenses per month exceeded.';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS enforce_plan_limits ON public.expenses;
+CREATE TRIGGER enforce_plan_limits BEFORE INSERT ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_plan_limits();
 
 CREATE OR REPLACE FUNCTION public.log_expense_change()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$

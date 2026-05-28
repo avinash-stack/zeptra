@@ -102,132 +102,80 @@ Deno.serve(async (req) => {
     const { data: planLimit } = await admin.from('plan_limits')
       .select('max_users').eq('plan', plan).single();
     const limit = planLimit?.max_users ?? null;
+
+    const invites = Array.isArray(body.invites) ? body.invites : [body];
+    
     if (limit !== null) {
       const { count } = await admin.from('users')
         .select('id', { count:'exact', head:true })
         .eq('org_id', callerProfile.org_id).eq('is_active', true);
-      if ((count||0) >= limit)
-        return json(403, { error: `${plan} plan limit reached. Upgrade to invite more.` });
-    }
-
-    // manager_id org check
-    if (managerId) {
-      const { data: mgr } = await admin.from('users')
-        .select('org_id').eq('id', managerId).single();
-      if (!mgr || mgr.org_id !== callerProfile.org_id)
-        return json(400, { error: 'Invalid manager_id' });
-    }
-
-    // redirect_to allowlist
-    const allowed = [Deno.env.get('SITE_URL'),'http://localhost:5173','http://localhost:3000'];
-    if (redirectTo && !allowed.some(o => o && redirectTo.startsWith(o)))
-      return json(400, { error: 'Invalid redirect_to' });
-
-    if (!email || !email.includes("@")) {
-      return json(400, { error: "Valid email is required" });
-    }
-
-    if (!name) {
-      return json(400, { error: "Name is required" });
-    }
-
-    if (!validRoles.has(role)) {
-      return json(400, { error: `Invalid role: ${role}` });
-    }
-
-    if (!isAdmin && role === "admin") {
-      return json(403, { error: "Only admin users can assign the admin role" });
-    }
-
-    const inviteOptions: { data?: { name: string }; redirectTo?: string } = {
-      data: { name },
-    };
-
-    if (redirectTo) {
-      inviteOptions.redirectTo = redirectTo;
-    }
-
-    // Use generateLink to get the action_link (magic link) instead of relying on Supabase internal mailer
-    const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-      type: 'invite',
-      email,
-      options: inviteOptions,
-    });
-
-    if (linkError) {
-      return json(400, { error: linkError.message });
-    }
-
-    const invitedUserId = linkData.user?.id;
-    const actionLink = linkData.properties?.action_link;
-
-    if (!invitedUserId || !actionLink) {
-      return json(500, { error: "Invite succeeded but failed to generate action link" });
-    }
-
-    const { error: profileError } = await admin.from("users").upsert(
-      {
-        id: invitedUserId,
-        org_id: callerProfile.org_id,
-        name,
-        email,
-        manager_id: managerId,
-        tag,
-        status: "active",
-        is_active: true,
-      },
-      { onConflict: "id" },
-    );
-
-    if (profileError) {
-      return json(500, { error: profileError.message });
-    }
-
-    const { error: deleteRoleError } = await admin.from("user_roles").delete().eq("user_id", invitedUserId);
-    if (deleteRoleError) {
-      return json(500, { error: deleteRoleError.message });
-    }
-
-    const { error: insertRoleError } = await admin.from("user_roles").insert({
-      user_id: invitedUserId,
-      role,
-    });
-
-    if (insertRoleError) {
-      return json(500, { error: insertRoleError.message });
-    }
-
-    // Send custom Resend email
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL");
-    
-    if (!resendApiKey || !fromEmail) {
-      return json(500, { error: "Missing RESEND_API_KEY or RESEND_FROM_EMAIL in function environment" });
+      if ((count||0) + invites.length > limit)
+        return json(403, { error: `${plan} plan limit reached. Upgrade to invite more users.` });
     }
 
     // Fetch org name
     let orgName = "Zeptra";
-    const { data: orgData } = await admin
-      .from("organizations")
-      .select("name")
-      .eq("id", callerProfile.org_id)
-      .single();
-    if (orgData?.name) {
-      orgName = orgData.name;
-    }
+    const { data: orgData } = await admin.from("organizations").select("name").eq("id", callerProfile.org_id).single();
+    if (orgData?.name) orgName = orgData.name;
 
     // Fetch inviter name
     let inviterName = "Someone";
-    const { data: inviterData } = await admin
-      .from("users")
-      .select("name")
-      .eq("id", callerId)
-      .single();
-    if (inviterData?.name) {
-      inviterName = inviterData.name;
+    const { data: inviterData } = await admin.from("users").select("name").eq("id", callerId).single();
+    if (inviterData?.name) inviterName = inviterData.name;
+
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const fromEmail = Deno.env.get("RESEND_FROM_EMAIL");
+    if (!resendApiKey || !fromEmail) {
+      return json(500, { error: "Missing RESEND_API_KEY or RESEND_FROM_EMAIL in function environment" });
     }
 
-    const emailHtml = `
+    const results = await Promise.allSettled(invites.map(async (invite: any) => {
+      const email = String(invite.email ?? "").trim().toLowerCase();
+      const name = String(invite.name ?? "").trim();
+      const role = String(invite.role ?? "employee") as AppRole;
+      const managerId = invite.manager_id ? String(invite.manager_id) : null;
+      const tag = invite.tag ? String(invite.tag) : null;
+      const redirectTo = invite.redirect_to ? String(invite.redirect_to) : undefined;
+
+      if (managerId) {
+        const { data: mgr } = await admin.from('users').select('org_id').eq('id', managerId).single();
+        if (!mgr || mgr.org_id !== callerProfile.org_id) throw new Error('Invalid manager_id');
+      }
+
+      const allowed = [Deno.env.get('SITE_URL'),'http://localhost:5173','http://localhost:3000'];
+      if (redirectTo && !allowed.some(o => o && redirectTo.startsWith(o))) throw new Error('Invalid redirect_to');
+      if (!email || !email.includes("@")) throw new Error("Valid email is required");
+      if (!name) throw new Error("Name is required");
+      if (!validRoles.has(role)) throw new Error(`Invalid role: ${role}`);
+      if (!isAdmin && role === "admin") throw new Error("Only admin users can assign the admin role");
+
+      const inviteOptions: { data?: { name: string }; redirectTo?: string } = { data: { name } };
+      if (redirectTo) inviteOptions.redirectTo = redirectTo;
+
+      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+        type: 'invite',
+        email,
+        options: inviteOptions,
+      });
+
+      if (linkError) throw new Error(linkError.message);
+
+      const invitedUserId = linkData.user?.id;
+      const actionLink = linkData.properties?.action_link;
+
+      if (!invitedUserId || !actionLink) throw new Error("Invite succeeded but failed to generate action link");
+
+      const { error: profileError } = await admin.from("users").upsert(
+        { id: invitedUserId, org_id: callerProfile.org_id, name, email, manager_id: managerId, tag, status: "active", is_active: true },
+        { onConflict: "id" },
+      );
+      if (profileError) throw new Error(profileError.message);
+
+      await admin.from("user_roles").delete().eq("user_id", invitedUserId);
+      const { error: insertRoleError } = await admin.from("user_roles").insert({ user_id: invitedUserId, role });
+      if (insertRoleError) throw new Error(insertRoleError.message);
+
+      const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -251,30 +199,29 @@ Deno.serve(async (req) => {
     </div>
   </div>
 </body>
-</html>
-    `;
+</html>`;
 
-    const resendRes = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${resendApiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: fromEmail,
-        to: [email],
-        subject: `You've been invited to join ${orgName} on Zeptra`,
-        html: emailHtml,
-      }),
-    });
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: fromEmail,
+          to: [email],
+          subject: `You've been invited to join ${orgName} on Zeptra`,
+          html: emailHtml,
+        }),
+      });
 
-    if (!resendRes.ok) {
-      const resendErr = await resendRes.json();
-      console.error("Failed to send invite email via Resend:", resendErr);
-      return json(502, { error: "User was created, but invitation email failed to send." });
+      if (!resendRes.ok) throw new Error("User was created, but invitation email failed to send.");
+      return { success: true, email };
+    }));
+
+    const failures = results.filter(r => r.status === 'rejected');
+    if (failures.length > 0 && invites.length === 1) {
+      return json(400, { error: (failures[0] as PromiseRejectedResult).reason.message });
     }
 
-    return json(200, { success: true, user_id: invitedUserId, email, role });
+    return json(200, { success: true, results: results.map(r => r.status === 'fulfilled' ? r.value : { error: r.reason.message }) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     return json(500, { error: message });

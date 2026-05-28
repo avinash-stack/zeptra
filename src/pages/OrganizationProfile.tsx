@@ -273,37 +273,49 @@ const OrganizationProfile: React.FC = () => {
     setInviteSending(true);
     const redirectTo = `${window.location.origin}/set-password`;
 
-    const results = await Promise.allSettled(
-      filledInvites.map(async (invite, idx) => {
-        // find actual index in the invites array
+    const payload = filledInvites.map(invite => ({
+      email: invite.email.trim().toLowerCase(),
+      name: invite.name.trim(),
+      role: invite.role,
+      manager_id: null,
+      tag: null,
+      redirect_to: redirectTo,
+    }));
+
+    filledInvites.forEach((invite) => {
+      const realIdx = invites.indexOf(invite);
+      updateInvite(realIdx, "status", "sending");
+    });
+
+    const { data, error } = await supabase.functions.invoke("invite-user", {
+      body: { invites: payload },
+    });
+
+    if (error || !data?.success) {
+      filledInvites.forEach((invite) => {
         const realIdx = invites.indexOf(invite);
-        updateInvite(realIdx, "status", "sending");
-
-        const { error } = await supabase.functions.invoke("invite-user", {
-          body: {
-            email: invite.email.trim().toLowerCase(),
-            name: invite.name.trim(),
-            role: invite.role,
-            manager_id: null,
-            tag: null,
-            redirect_to: redirectTo,
-          },
-        });
-
-        if (error) {
+        updateInvite(realIdx, "status", "failed");
+      });
+      toast.error(error?.message || data?.error || "Failed to invite some users");
+    } else {
+      let succeededCount = 0;
+      let failedCount = 0;
+      filledInvites.forEach((invite, idx) => {
+        const realIdx = invites.indexOf(invite);
+        const result = data.results?.[idx];
+        if (result?.success) {
+          updateInvite(realIdx, "status", "sent");
+          succeededCount++;
+        } else {
           updateInvite(realIdx, "status", "failed");
-          throw error;
+          failedCount++;
         }
-        updateInvite(realIdx, "status", "sent");
-      }),
-    );
+      });
+      setInvitesSentCount(succeededCount);
 
-    const succeeded = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
-    setInvitesSentCount(succeeded);
-
-    if (succeeded > 0) toast.success(`${succeeded} invite${succeeded > 1 ? "s" : ""} sent!`);
-    if (failed > 0) toast.error(`${failed} invite${failed > 1 ? "s" : ""} failed. You can retry later from User Management.`);
+      if (succeededCount > 0) toast.success(`${succeededCount} invite${succeededCount > 1 ? "s" : ""} sent!`);
+      if (failedCount > 0) toast.error(`${failedCount} invite${failedCount > 1 ? "s" : ""} failed. You can retry later from User Management.`);
+    }
 
     setInviteSending(false);
     setStep(3);

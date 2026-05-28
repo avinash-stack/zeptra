@@ -143,6 +143,7 @@ Deno.serve(async (req) => {
             status: "active",
             current_period_end: currentPeriodEnd,
             updated_at: new Date().toISOString(),
+            last_event_timestamp: new Date(event.created * 1000).toISOString(),
           },
           { onConflict: "org_id" },
         );
@@ -165,6 +166,13 @@ Deno.serve(async (req) => {
           ? new Date(sub.current_period_end * 1000).toISOString()
           : null;
 
+        const eventTime = new Date(event.created * 1000);
+        const { data: existing } = await admin.from("subscriptions").select("last_event_timestamp").eq("stripe_subscription_id", stripeSubscriptionId).single();
+        if (existing?.last_event_timestamp && eventTime <= new Date(existing.last_event_timestamp)) {
+          console.log("Skipping outdated subscription.updated event");
+          break;
+        }
+
         const { error } = await admin
           .from("subscriptions")
           .update({
@@ -172,6 +180,7 @@ Deno.serve(async (req) => {
             status,
             current_period_end: currentPeriodEnd,
             updated_at: new Date().toISOString(),
+            last_event_timestamp: eventTime.toISOString(),
           })
           .eq("stripe_subscription_id", stripeSubscriptionId);
 
@@ -186,6 +195,13 @@ Deno.serve(async (req) => {
         const sub = event.data.object;
         const stripeSubscriptionId = sub.id;
 
+        const eventTime = new Date(event.created * 1000);
+        const { data: existing } = await admin.from("subscriptions").select("last_event_timestamp").eq("stripe_subscription_id", stripeSubscriptionId).single();
+        if (existing?.last_event_timestamp && eventTime <= new Date(existing.last_event_timestamp)) {
+          console.log("Skipping outdated subscription.deleted event");
+          break;
+        }
+
         const { error } = await admin
           .from("subscriptions")
           .update({
@@ -194,6 +210,7 @@ Deno.serve(async (req) => {
             stripe_subscription_id: null,
             current_period_end: null,
             updated_at: new Date().toISOString(),
+            last_event_timestamp: eventTime.toISOString(),
           })
           .eq("stripe_subscription_id", stripeSubscriptionId);
 

@@ -29,7 +29,7 @@ const MyExpenses: React.FC = () => {
   useEffect(() => {
     fetchExpenses();
     if (profile?.org_id) {
-      supabase.from('expense_categories').select('*').eq('org_id', profile.org_id).then(({ data }) => {
+      supabase.from('expense_categories').select('*').eq('org_id', profile.org_id).limit(1000).then(({ data }) => {
         if (data) setCategories(data as ExpenseCategory[]);
       });
     }
