@@ -144,6 +144,21 @@ const AllExpenses: React.FC = () => {
     }
   };
 
+  const handleViewReceipt = async (receiptKey: string | null) => {
+    if (!receiptKey) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('get-upload-url', {
+        body: { action: 'get_download_url', receipt_key: receiptKey },
+      });
+      if (error || !data?.download_url) {
+        throw new Error(error?.message || 'Failed to get download URL');
+      }
+      window.open(data.download_url, '_blank');
+    } catch (e: any) {
+      toast.error(e.message || 'Could not fetch receipt image');
+    }
+  };
+
   const handleExportCSV = () => {
     if (!expenses.length) { toast.error('No expenses to export'); return; }
     exportToCSV(expenses, organization?.name || 'Zeptra');
@@ -223,6 +238,7 @@ const AllExpenses: React.FC = () => {
                   <TableHead>Category</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead>Amount</TableHead>
+                  <TableHead>Receipt</TableHead>
                   <TableHead>Status</TableHead>
                   {isFinance && <TableHead>Actions</TableHead>}
                 </TableRow>
@@ -230,13 +246,13 @@ const AllExpenses: React.FC = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={isFinance ? 7 : 6} className="text-center py-8">
+                    <TableCell colSpan={isFinance ? 8 : 7} className="text-center py-8">
                       <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground"/>
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={isFinance ? 7 : 6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={isFinance ? 8 : 7} className="text-center py-8 text-muted-foreground">
                       No records found
                     </TableCell>
                   </TableRow>
@@ -250,6 +266,20 @@ const AllExpenses: React.FC = () => {
                       {expense.currency === 'INR' ? '₹' : expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$'}
                       {Number(expense.amount).toFixed(2)}
                       <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
+                    </TableCell>
+                    <TableCell>
+                      {expense.receipt_url ? (
+                        <Button
+                          size="sm"
+                          variant="link"
+                          onClick={() => handleViewReceipt(expense.receipt_url)}
+                          className="h-7 px-0 text-xs font-semibold text-primary"
+                        >
+                          View
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col items-start gap-1">

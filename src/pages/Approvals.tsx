@@ -272,6 +272,21 @@ const Approvals: React.FC = () => {
     }
   };
 
+  const handleViewReceipt = async (receiptKey: string | null) => {
+    if (!receiptKey) return;
+    try {
+      const { data, error } = await supabase.functions.invoke('get-upload-url', {
+        body: { action: 'get_download_url', receipt_key: receiptKey },
+      });
+      if (error || !data?.download_url) {
+        throw new Error(error?.message || 'Failed to get download URL');
+      }
+      window.open(data.download_url, '_blank');
+    } catch (e: any) {
+      toast.error(e.message || 'Could not fetch receipt image');
+    }
+  };
+
   const openAction = (expense: ExpenseWithDetails, type: 'approve' | 'reject' | 'reassign') => {
     setActionExpense(expense);
     setActionType(type);
@@ -314,6 +329,7 @@ const Approvals: React.FC = () => {
                   <TableHead>Description</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Risk</TableHead>
+                  <TableHead>Receipt</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -321,13 +337,13 @@ const Approvals: React.FC = () => {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       Loading approvals...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                       No pending approvals
                     </TableCell>
                   </TableRow>
@@ -355,6 +371,20 @@ const Approvals: React.FC = () => {
                         >
                           Analyze
                         </Button>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {expense.receipt_url ? (
+                        <Button
+                          size="sm"
+                          variant="link"
+                          onClick={() => handleViewReceipt(expense.receipt_url)}
+                          className="h-7 px-0 text-xs font-semibold text-primary"
+                        >
+                          View
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell>

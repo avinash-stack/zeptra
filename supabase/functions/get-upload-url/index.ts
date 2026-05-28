@@ -96,6 +96,34 @@ async function createPresignedUrl(
   return `${endpoint}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
 }
 
+async function createPresignedGetUrl(
+  accessKeyId: string,
+  secretAccessKey: string,
+  region: string,
+  bucket: string,
+  key: string,
+  expiresInSeconds = 120,
+) {
+  const method = "GET";
+  const service = "s3";
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const endpoint = `https://${host}/${key}`;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.substring(0, 8);
+  const canonicalUri = "/" + key.split("/").map(encodeURIComponent).join("/");
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const credential = encodeURIComponent(`${accessKeyId}/${credentialScope}`);
+  const canonicalQuerystring = `X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=${credential}&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresInSeconds}&X-Amz-SignedHeaders=host`;
+  const canonicalHeaders = `host:${host}\n`;
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\nhost\nUNSIGNED-PAYLOAD`;
+  const canonicalRequestHash = await sha256(canonicalRequest);
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${canonicalRequestHash}`;
+  const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
+  const signature = toHex(await hmac(signingKey, stringToSign));
+  return `${endpoint}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -129,6 +157,73 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => null);
+
+    if (body?.action === "get_download_url") {
+      const receipt_key = String(body.receipt_key ?? "").trim();
+      if (!receipt_key) {
+        return json(400, { error: "receipt_key is required" });
+      }
+
+      const callerId = authData.user.id;
+      let authorized = false;
+
+      // 1. Owner authorization (receipt key format receipts/owner_id/...)
+      if (receipt_key.startsWith(`receipts/${callerId}/`)) {
+        authorized = true;
+      }
+
+      // 2. Non-owner authorization (manager, admin, finance of same org)
+      if (!authorized) {
+        const [{ data: callerProfile }, { data: callerRoles }] = await Promise.all([
+          admin.from("users").select("org_id").eq("id", callerId).single(),
+          admin.from("user_roles").select("role").eq("user_id", callerId),
+        ]);
+        const callerOrgId = callerProfile?.org_id;
+        const callerRoleNames = (callerRoles || []).map((r: { role: string }) => r.role);
+
+        const { data: expense } = await admin
+          .from("expenses")
+          .select("*, users!user_id(org_id)")
+          .eq("receipt_url", receipt_key)
+          .maybeSingle();
+
+        if (expense) {
+          const submitterOrgId = expense.users?.org_id || expense.org_id;
+          const isSameOrg = callerOrgId && callerOrgId === submitterOrgId;
+
+          if (isSameOrg) {
+            const isCurrentApprover = expense.current_approver_id === callerId;
+            const isOrgPrivileged = callerRoleNames.includes("admin") || callerRoleNames.includes("finance");
+            
+            const { data: directReport } = await admin
+              .from("users")
+              .select("id")
+              .eq("id", expense.user_id)
+              .eq("manager_id", callerId)
+              .maybeSingle();
+
+            if (isCurrentApprover || isOrgPrivileged || directReport) {
+              authorized = true;
+            }
+          }
+        }
+      }
+
+      if (!authorized) {
+        return json(403, { error: "You are not authorized to access this receipt" });
+      }
+
+      const download_url = await createPresignedGetUrl(
+        accessKeyId,
+        secretAccessKey,
+        region,
+        bucket,
+        receipt_key,
+      );
+
+      return json(200, { download_url });
+    }
+
     if (!body?.file_name || !body?.file_type || typeof body?.file_size !== "number") {
       return json(400, { error: "file_name, file_type, and file_size are required" });
     }

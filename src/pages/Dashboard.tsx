@@ -11,18 +11,23 @@ import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receip
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { logExport } from '@/lib/auditLogger';
 import type { OrgCurrency } from '@/types/database';
+import { Skeleton } from '@/components/ui/skeleton';
+import { usePlanLimit } from '@/hooks/usePlanLimit';
 
 const COLORS = ['hsl(262, 83%, 58%)', 'hsl(38, 92%, 50%)', 'hsl(142, 71%, 45%)', 'hsl(0, 84%, 60%)'];
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, profile, hasRole, hasAnyRole, isManager } = useAuth();
+  const { canAccess, isLoading: limitsLoading } = usePlanLimit();
   const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, totalAmount: 0, flagged: 0 });
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<'30d' | '90d' | 'year' | 'all'>('all');
   const [allExpenses, setAllExpenses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [defaultCurrSymbol, setDefaultCurrSymbol] = useState('');
+
+  const isDashboardLoading = loading || limitsLoading;
 
   useEffect(() => {
     fetchStats();
@@ -185,7 +190,75 @@ const Dashboard: React.FC = () => {
         </p>
       </div>
 
-      {!loading && stats.total === 0 && !isAdmin ? (
+      {isDashboardLoading ? (
+        <div className="space-y-6">
+          {/* Skeleton Stats Cards */}
+          <div className={isAdmin ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"}>
+            {Array.from({ length: isAdmin ? 7 : 4 }).map((_, i) => (
+              <Card key={i} className="overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="w-10 h-10 rounded-xl" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-8 w-20 mb-1" />
+                  <Skeleton className="h-3 w-32" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          {/* Skeleton Analytics Title (Admin) */}
+          {isAdmin && (
+            <div className="flex items-center justify-between mt-10 mb-4">
+              <Skeleton className="h-7 w-28" />
+              <Skeleton className="h-9 w-28" />
+            </div>
+          )}
+
+          {/* Skeleton Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-5 w-36" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[300px] w-full" />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[300px] w-full" />
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Skeleton Bottom Section for Admin */}
+          {isAdmin && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-5 w-32" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-[300px] w-full" />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-5 w-28" />
+                </CardHeader>
+                <CardContent>
+                  <Skeleton className="h-[300px] w-full" />
+                </CardContent>
+              </Card>
+            </div>
+          )}
+        </div>
+      ) : !isDashboardLoading && stats.total === 0 && !isAdmin ? (
         <Card className="max-w-md mx-auto mt-12">
           <CardContent className="flex flex-col items-center text-center py-12 px-6">
             <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/10 to-info/10 flex items-center justify-center mb-4">
@@ -250,133 +323,171 @@ const Dashboard: React.FC = () => {
             </div>
           )}
 
-          {isAdmin && (
-            <div className="flex items-center justify-between mt-10 mb-4">
-              <h2 className="text-xl font-bold">Analytics</h2>
-              <Button variant="outline" onClick={exportCSV}>
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Monthly Expense Trend</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {monthlyData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={monthlyData}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis dataKey="name" className="text-xs" />
-                      <YAxis className="text-xs" />
-                      <Tooltip />
-                      <Bar dataKey="amount" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    No expense data yet
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Status Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pieData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
-                        {pieData.map((_, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                    No expense data yet
-                  </div>
-                )}
-                <div className="flex justify-center gap-4 mt-2">
-                  {pieData.map((item, i) => (
-                    <div key={item.name} className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                      <span className="text-sm text-muted-foreground">{item.name}: {item.value}</span>
-                    </div>
-                  ))}
+          {canAccess('analytics') ? (
+            <>
+              {isAdmin && (
+                <div className="flex items-center justify-between mt-10 mb-4">
+                  <h2 className="text-xl font-bold">Analytics</h2>
+                  <Button variant="outline" onClick={exportCSV}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              )}
 
-          {isAdmin && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Spend by category</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {categoryChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={300}>
-                      <BarChart layout="vertical" data={categoryChartData} margin={{ left: 20 }}>
-                        <XAxis type="number" className="text-xs" />
-                        <YAxis type="category" dataKey="name" width={120} className="text-xs" />
-                        <Tooltip />
-                        <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-                      No category data yet
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Monthly Expense Trend</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {monthlyData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={monthlyData}>
+                          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                          <XAxis dataKey="name" className="text-xs" />
+                          <YAxis className="text-xs" />
+                          <Tooltip />
+                          <Bar dataKey="amount" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                        No expense data yet
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Status Breakdown</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {pieData.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={300}>
+                        <PieChart>
+                          <Pie data={pieData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+                            {pieData.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                        No expense data yet
+                      </div>
+                    )}
+                    <div className="flex justify-center gap-4 mt-2">
+                      {pieData.map((item, i) => (
+                        <div key={item.name} className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i] }} />
+                          <span className="text-sm text-muted-foreground">{item.name}: {item.value}</span>
+                        </div>
+                      ))}
                     </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {isAdmin && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Spend by category</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {categoryChartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart layout="vertical" data={categoryChartData} margin={{ left: 20 }}>
+                            <XAxis type="number" className="text-xs" />
+                            <YAxis type="category" dataKey="name" width={120} className="text-xs" />
+                            <Tooltip />
+                            <Bar dataKey="amount" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[300px] flex items-center justify-center text-muted-foreground">
+                          No category data yet
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Top spenders</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {topSpenders.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Employee</TableHead>
+                                <TableHead className="text-right">Total spent</TableHead>
+                                <TableHead className="text-right">Expenses</TableHead>
+                                <TableHead className="text-right">Avg per expense</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {topSpenders.map((s, i) => (
+                                <TableRow key={i}>
+                                  <TableCell className="font-medium">{s.name}</TableCell>
+                                  <TableCell className="text-right font-medium">{defaultCurrSymbol}{s.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                                  <TableCell className="text-right text-muted-foreground">{s.count}</TableCell>
+                                  <TableCell className="text-right text-muted-foreground">{defaultCurrSymbol}{s.avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center text-muted-foreground py-8">
+                          No spender data yet
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              {isAdmin && (
+                <div className="flex items-center justify-between mt-10 mb-4">
+                  <h2 className="text-xl font-bold">Analytics</h2>
+                </div>
+              )}
+              <Card className="relative overflow-hidden border border-border/50 bg-card/60 backdrop-blur-md">
+                <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 via-accent/5 to-transparent pointer-events-none" />
+                <CardContent className="flex flex-col items-center justify-center text-center py-16 px-6">
+                  <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center mb-6 shadow-lg shadow-primary/5 ring-1 ring-primary/30">
+                    <TrendingUp className="w-8 h-8 text-primary animate-pulse" />
+                  </div>
+                  <h3 className="text-2xl font-bold tracking-tight mb-2 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Unlock Advanced Analytics
+                  </h3>
+                  <p className="text-muted-foreground text-sm max-w-md mb-8">
+                    Gain deep insights into your organization's spend patterns, view trends over time, categorize expenses, and identify top spenders.
+                  </p>
+                  {isAdmin ? (
+                    <Button
+                      className="bg-gradient-to-r from-primary to-accent shadow-md shadow-primary/20 hover:opacity-90 transition-all duration-200"
+                      onClick={() => navigate('/app/settings')}
+                    >
+                      Upgrade Plan
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground bg-muted/50 px-3 py-1.5 rounded-full border border-border/40">
+                      Contact your administrator to upgrade and unlock analytics
+                    </p>
                   )}
                 </CardContent>
               </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Top spenders</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {topSpenders.length > 0 ? (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Employee</TableHead>
-                            <TableHead className="text-right">Total spent</TableHead>
-                            <TableHead className="text-right">Expenses</TableHead>
-                            <TableHead className="text-right">Avg per expense</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {topSpenders.map((s, i) => (
-                            <TableRow key={i}>
-                              <TableCell className="font-medium">{s.name}</TableCell>
-                              <TableCell className="text-right font-medium">{defaultCurrSymbol}{s.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                              <TableCell className="text-right text-muted-foreground">{s.count}</TableCell>
-                              <TableCell className="text-right text-muted-foreground">{defaultCurrSymbol}{s.avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center text-muted-foreground py-8">
-                      No spender data yet
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+            </>
           )}
         </>
       )}

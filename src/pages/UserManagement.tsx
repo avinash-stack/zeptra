@@ -48,9 +48,17 @@ const UserManagement: React.FC = () => {
   const [newManagerId, setNewManagerId] = useState('none');
   const [newTag, setNewTag] = useState('');
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
+  // Pagination states
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 10;
+
+  interface ManagerUser {
+    id: string;
+    name: string;
+    roles: AppRole[];
+  }
+  const [managers, setManagers] = useState<ManagerUser[]>([]);
 
   const isAdmin = roles.includes('admin');
   const isHr = roles.includes('hr');
@@ -60,21 +68,113 @@ const UserManagement: React.FC = () => {
   const canResetPasswords = isAdmin;
   const canDeleteUsers = isAdmin;
 
-  const fetchUsers = async () => {
-    const { data: profiles } = await supabase.from('users').select('*').order('name');
-    const { data: roles } = await supabase.from('user_roles').select('*');
-
-    if (profiles) {
-      const usersWithRoles: UserWithRoles[] = (profiles as Profile[]).map(p => ({
-        ...p,
-        roles: (roles as any[] || []).filter(r => r.user_id === p.id).map(r => r.role),
-        managerName: profiles.find(pp => pp.id === p.manager_id)?.name || undefined,
-      }));
-      // Show ALL users including Owner/Admin
-      setUsers(usersWithRoles);
+  const fetchManagers = async () => {
+    try {
+      const { data: profiles } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('status', 'active')
+        .order('name');
+      
+      if (profiles) {
+        const userIds = profiles.map(p => p.id);
+        let rolesData: any[] = [];
+        if (userIds.length > 0) {
+          const { data: fetchedRoles } = await supabase
+            .from('user_roles')
+            .select('*')
+            .in('user_id', userIds);
+          rolesData = fetchedRoles || [];
+        }
+        
+        const managersList: ManagerUser[] = profiles.map(p => ({
+          id: p.id,
+          name: p.name,
+          roles: rolesData.filter(r => r.user_id === p.id).map(r => r.role as AppRole),
+        }));
+        setManagers(managersList);
+      }
+    } catch (err) {
+      console.error('Failed to fetch managers:', err);
     }
-    setLoading(false);
   };
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('users')
+        .select('*', { count: 'exact' });
+
+      if (searchTerm.trim() !== '') {
+        query = query.or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
+      }
+
+      const start = page * PAGE_SIZE;
+      const end = start + PAGE_SIZE - 1;
+
+      const { data: profiles, count, error } = await query
+        .order('name')
+        .range(start, end);
+
+      if (error) throw error;
+
+      if (profiles) {
+        const userIds = profiles.map(p => p.id);
+        
+        let rolesData: any[] = [];
+        if (userIds.length > 0) {
+          const { data: fetchedRoles } = await supabase
+            .from('user_roles')
+            .select('*')
+            .in('user_id', userIds);
+          rolesData = fetchedRoles || [];
+        }
+
+        const managerIds = [...new Set(profiles.map(p => p.manager_id).filter(Boolean))];
+        let managerMap = new Map<string, string>();
+        if (managerIds.length > 0) {
+          const { data: managersData } = await supabase
+            .from('users')
+            .select('id, name')
+            .in('id', managerIds);
+          if (managersData) {
+            managersData.forEach(m => managerMap.set(m.id, m.name));
+          }
+        }
+
+        const usersWithRoles: UserWithRoles[] = (profiles as Profile[]).map(p => ({
+          ...p,
+          roles: rolesData.filter(r => r.user_id === p.id).map(r => r.role),
+          managerName: managerMap.get(p.manager_id || '') || undefined,
+        }));
+        setUsers(usersWithRoles);
+        setHasMore(count ? (start + profiles.length < count) : (profiles.length === PAGE_SIZE));
+      } else {
+        setUsers([]);
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Failed to fetch users:', err);
+      toast.error('Failed to load users');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchManagers();
+  }, []);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      fetchUsers();
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [page, searchTerm]);
 
   const handleCreateUser = async () => {
     if (!newName.trim() || !newEmail.trim()) {
@@ -116,6 +216,7 @@ const UserManagement: React.FC = () => {
       setShowCreateDialog(false);
       resetForm();
       fetchUsers();
+      fetchManagers();
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to send invite';
       toast.error(message);
@@ -136,6 +237,7 @@ const UserManagement: React.FC = () => {
     } else {
       toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
       fetchUsers();
+      fetchManagers();
     }
     setActionUserId(null);
   };
@@ -146,6 +248,7 @@ const UserManagement: React.FC = () => {
     await supabase.from('user_roles').insert({ user_id: userId, role });
     toast.success('Role updated');
     fetchUsers();
+    fetchManagers();
     setEditUser(null);
   };
 
@@ -197,6 +300,7 @@ const UserManagement: React.FC = () => {
       toast.success(`Deleted ${deleteUser.email}`);
       setDeleteUser(null);
       fetchUsers();
+      fetchManagers();
     } catch (error: unknown) {
       let message = error instanceof Error ? error.message : 'Failed to delete user';
 
@@ -214,6 +318,7 @@ const UserManagement: React.FC = () => {
     await supabase.from('users').update({ manager_id: managerId || null }).eq('id', userId);
     toast.success('Manager updated');
     fetchUsers();
+    fetchManagers();
     setEditUser(null);
   };
 
@@ -225,10 +330,7 @@ const UserManagement: React.FC = () => {
     setNewTag('');
   };
 
-  const filtered = users.filter(u =>
-    u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filtered = users;
 
   const roleColors: Record<AppRole, string> = {
     admin: 'bg-destructive/15 text-destructive border-destructive/30',
@@ -275,7 +377,7 @@ const UserManagement: React.FC = () => {
         <CardHeader>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search users..." className="pl-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+            <Input placeholder="Search users..." className="pl-9" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }} />
           </div>
         </CardHeader>
         <CardContent>
@@ -352,6 +454,15 @@ const UserManagement: React.FC = () => {
             </TableBody>
           </Table>
           </div>
+          <div className="flex items-center justify-between mt-4">
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page === 0}>
+              ← Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">Page {page + 1}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={!hasMore}>
+              Next →
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -396,7 +507,7 @@ const UserManagement: React.FC = () => {
                   <SelectContent>
                     <SelectItem value="none">No Manager</SelectItem>
                   {/* All active users can be a manager */}
-                  {users.filter(u => u.status === 'active').map(m => (
+                  {managers.map(m => (
                     <SelectItem key={m.id} value={m.id}>{m.name} ({m.roles.join(', ')})</SelectItem>
                   ))}
                 </SelectContent>
@@ -438,7 +549,7 @@ const UserManagement: React.FC = () => {
                   <SelectContent>
                     <SelectItem value="none">No Manager</SelectItem>
                     {/* All active users except the user being edited can be a manager */}
-                    {users.filter(u => u.id !== editUser.id && u.status === 'active').map(m => (
+                    {managers.filter(u => u.id !== editUser.id).map(m => (
                       <SelectItem key={m.id} value={m.id}>{m.name} ({m.roles.join(', ')})</SelectItem>
                     ))}
                   </SelectContent>

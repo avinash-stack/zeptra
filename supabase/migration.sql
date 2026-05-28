@@ -118,7 +118,7 @@ CREATE TABLE public.expense_categories (
 -- ============================================================
 CREATE TABLE public.expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
   amount DECIMAL(12,2) NOT NULL CHECK (amount > 0),
   currency TEXT DEFAULT 'USD' NOT NULL,
   category_id UUID NOT NULL REFERENCES public.expense_categories(id),
@@ -270,7 +270,10 @@ CREATE POLICY "roles_delete" ON public.user_roles FOR DELETE TO authenticated
 -- 20. RLS — Expense Categories
 -- ============================================================
 CREATE POLICY "cat_select" ON public.expense_categories FOR SELECT TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()));
+  USING (
+    (org_id = public.user_org_id(auth.uid()) AND is_active = true)
+    OR (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
+  );
 CREATE POLICY "cat_insert" ON public.expense_categories FOR INSERT TO authenticated
   WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
 CREATE POLICY "cat_update" ON public.expense_categories FOR UPDATE TO authenticated
@@ -295,7 +298,12 @@ CREATE POLICY "exp_update" ON public.expenses FOR UPDATE TO authenticated
   USING (
     (user_id = auth.uid() AND status = 'pending_l1')
     OR current_approver_id = auth.uid()
-    OR public.has_role(auth.uid(), 'admin')
+    OR (public.has_role(auth.uid(),'admin') AND org_id = public.user_org_id(auth.uid()))
+    OR (public.has_role(auth.uid(),'finance') AND org_id = public.user_org_id(auth.uid()))
+  )
+  WITH CHECK (
+    org_id = public.user_org_id(auth.uid())
+    AND NOT (user_id = auth.uid() AND status IN ('approved','rejected'))
   );
 CREATE POLICY "exp_delete" ON public.expenses FOR DELETE TO authenticated
   USING (user_id = auth.uid() AND status = 'pending_l1');
