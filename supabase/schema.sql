@@ -56,6 +56,7 @@ CREATE TABLE public.profiles (
   manager_id UUID REFERENCES public.profiles(id),
   tag TEXT,
   status public.profile_status DEFAULT 'active' NOT NULL,
+  is_active BOOLEAN DEFAULT true NOT NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -78,6 +79,7 @@ CREATE TABLE public.expense_categories (
   org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   is_active BOOLEAN DEFAULT true NOT NULL,
+  gl_code TEXT NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   UNIQUE(org_id, name)
 );
@@ -87,6 +89,7 @@ CREATE TABLE public.expense_categories (
 -- ============================================================
 CREATE TABLE public.expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   amount DECIMAL(12,2) NOT NULL CHECK (amount > 0),
   currency TEXT DEFAULT 'USD' NOT NULL,
@@ -95,6 +98,7 @@ CREATE TABLE public.expenses (
   receipt_url TEXT,
   status public.expense_status DEFAULT 'pending_l1' NOT NULL,
   current_approver_id UUID REFERENCES auth.users(id),
+  version INTEGER NOT NULL DEFAULT 1,
   is_policy_exception BOOLEAN DEFAULT false NOT NULL,
   submitted_at TIMESTAMPTZ DEFAULT now(),
   decided_at TIMESTAMPTZ,
@@ -114,6 +118,30 @@ CREATE TABLE public.approval_history (
   reassigned_to UUID REFERENCES auth.users(id),
   comments TEXT,
   acted_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ============================================================
+-- 8b. Audit log + exports log
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  entity_type TEXT NOT NULL CHECK (entity_type IN ('expense','user','organization','category','approval')),
+  entity_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('created','updated','approved','rejected','reassigned','invited','deactivated','activated','exported','deleted')),
+  changes JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS audit_log_org_idx ON public.audit_log(org_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.exports_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  export_type TEXT NOT NULL CHECK (export_type IN ('csv','tally_xml','audit_csv')),
+  record_count INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- ============================================================
@@ -188,6 +216,8 @@ ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expense_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.approval_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.exports_log ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- 11. RLS Policies
@@ -202,9 +232,12 @@ CREATE POLICY "Admin can update own org" ON public.organizations
   FOR UPDATE TO authenticated
   USING (id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
 
-CREATE POLICY "Anyone can insert org during bootstrap" ON public.organizations
-  FOR INSERT TO authenticated
-  WITH CHECK (true);
+-- Org insert: only users with no org yet
+DROP POLICY IF EXISTS "Anyone can insert org during bootstrap" ON public.organizations;
+CREATE POLICY "bootstrap_insert" ON public.organizations FOR INSERT TO authenticated
+  WITH CHECK (NOT EXISTS (
+    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND org_id IS NOT NULL
+  ));
 
 -- Org currencies: org members can view, admin can manage
 CREATE POLICY "Members can view currencies" ON public.org_currencies
@@ -224,21 +257,27 @@ CREATE POLICY "Users can update own profile" ON public.profiles
   FOR UPDATE TO authenticated
   USING (id = auth.uid());
 
-CREATE POLICY "Admin/HR can insert profiles" ON public.profiles
-  FOR INSERT TO authenticated
-  WITH CHECK (true);
+-- Profile insert/update: must be org-scoped
+DROP POLICY IF EXISTS "Admin/HR can insert profiles" ON public.profiles;
+DROP POLICY IF EXISTS "Admin/HR can update profiles" ON public.profiles;
+CREATE POLICY "admin_hr_insert" ON public.profiles FOR INSERT TO authenticated
+  WITH CHECK (org_id = public.user_org_id(auth.uid())
+    AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')));
+CREATE POLICY "admin_hr_update" ON public.profiles FOR UPDATE TO authenticated
+  USING (org_id = public.user_org_id(auth.uid())
+    AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')))
+  WITH CHECK (org_id = public.user_org_id(auth.uid()));
 
-CREATE POLICY "Admin/HR can update profiles" ON public.profiles
-  FOR UPDATE TO authenticated
-  USING (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'hr'));
-
--- User roles: readable by all, writable by admin/hr
-CREATE POLICY "Users can view roles" ON public.user_roles
-  FOR SELECT TO authenticated USING (true);
-
-CREATE POLICY "Admin/HR can manage roles" ON public.user_roles
-  FOR ALL TO authenticated
-  USING (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'hr'));
+-- user_roles: org-scoped
+DROP POLICY IF EXISTS "Users can view roles" ON public.user_roles;
+DROP POLICY IF EXISTS "Admin/HR can manage roles" ON public.user_roles;
+CREATE POLICY "org_select" ON public.user_roles FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.profiles
+    WHERE id = user_id AND org_id = public.user_org_id(auth.uid())));
+CREATE POLICY "admin_hr_all" ON public.user_roles FOR ALL TO authenticated
+  USING (EXISTS (SELECT 1 FROM public.profiles
+    WHERE id = user_id AND org_id = public.user_org_id(auth.uid()))
+    AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')));
 
 -- Expense categories: org members can read active, admin can CRUD
 CREATE POLICY "Members can view active categories" ON public.expense_categories
@@ -272,12 +311,21 @@ CREATE POLICY "Employee can insert own expenses" ON public.expenses
   FOR INSERT TO authenticated
   WITH CHECK (user_id = auth.uid());
 
-CREATE POLICY "Employee can update own pending expenses" ON public.expenses
-  FOR UPDATE TO authenticated
+-- Expense update: include finance, block self-approval
+DROP POLICY IF EXISTS "Employee can update own pending expenses" ON public.expenses;
+CREATE POLICY "expense_update" ON public.expenses FOR UPDATE TO authenticated
   USING (
     (user_id = auth.uid() AND status = 'pending_l1')
     OR current_approver_id = auth.uid()
-    OR public.has_role(auth.uid(), 'admin')
+    OR public.has_role(auth.uid(),'admin')
+    OR public.has_role(auth.uid(),'finance')
+  )
+  WITH CHECK (
+    NOT (user_id = auth.uid()
+      AND (public.has_role(auth.uid(),'finance') OR public.has_role(auth.uid(),'admin'))
+      AND status IN ('pending_l1','pending_l2'))
+    OR current_approver_id = auth.uid()
+    OR (user_id = auth.uid() AND status = 'pending_l1')
   );
 
 CREATE POLICY "Employee can delete own pending expenses" ON public.expenses
@@ -305,6 +353,12 @@ CREATE POLICY "Users can upload receipts" ON storage.objects
 CREATE POLICY "Anyone can view receipts" ON storage.objects
   FOR SELECT TO authenticated
   USING (bucket_id = 'receipts');
+
+-- Storage: restrict receipts to owner only
+DROP POLICY IF EXISTS "Anyone can view receipts" ON storage.objects;
+CREATE POLICY "owner_select" ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'receipts'
+    AND (storage.foldername(name))[1] = auth.uid()::text);
 
 -- ============================================================
 -- 13. Encryption helpers (pgcrypto)
@@ -490,22 +544,21 @@ CREATE TABLE public.subscriptions (
 
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Members can view own subscription" ON public.subscriptions
-  FOR SELECT TO authenticated
+DROP POLICY IF EXISTS "Members can view own subscription" ON public.subscriptions;
+CREATE POLICY "org_select" ON public.subscriptions FOR SELECT TO authenticated
   USING (org_id = public.user_org_id(auth.uid()));
-
--- No INSERT/UPDATE/DELETE policies for authenticated users.
--- Only service_role (edge functions) can write to this table.
+CREATE POLICY "admin_all" ON public.subscriptions FOR ALL TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
 
 -- ============================================================
 -- 18. Plan limits table (reference data)
 -- ============================================================
 CREATE TABLE public.plan_limits (
   plan TEXT PRIMARY KEY CHECK (plan IN ('free', 'pro', 'enterprise')),
-  max_users INT NOT NULL,
-  max_expenses_per_month INT NOT NULL,
-  has_analytics BOOLEAN NOT NULL DEFAULT false,
-  has_api BOOLEAN NOT NULL DEFAULT false
+  max_users INT,
+  max_expenses_per_month INT,
+  has_analytics BOOL DEFAULT false,
+  has_api BOOL DEFAULT false
 );
 
 ALTER TABLE public.plan_limits ENABLE ROW LEVEL SECURITY;
@@ -513,12 +566,13 @@ ALTER TABLE public.plan_limits ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view plan limits" ON public.plan_limits
   FOR SELECT TO authenticated USING (true);
 
--- Seed plan limits (-1 = unlimited)
-INSERT INTO public.plan_limits (plan, max_users, max_expenses_per_month, has_analytics, has_api) VALUES
-  ('free',       5,  50, false, false),
-  ('pro',       50,  -1,  true, false),
-  ('enterprise', -1,  -1,  true,  true)
-ON CONFLICT (plan) DO NOTHING;
+UPDATE public.plan_limits
+SET max_users = NULLIF(max_users, -1),
+    max_expenses_per_month = NULLIF(max_expenses_per_month, -1);
+
+INSERT INTO public.plan_limits VALUES
+  ('free',5,50,false,false),('pro',50,NULL,true,false),('enterprise',NULL,NULL,true,true)
+ON CONFLICT DO NOTHING;
 
 -- ============================================================
 -- 19. Notification preferences
@@ -529,24 +583,19 @@ CREATE TABLE public.notification_preferences (
   on_expense_submitted BOOLEAN NOT NULL DEFAULT true,
   on_expense_approved BOOLEAN NOT NULL DEFAULT true,
   on_expense_rejected BOOLEAN NOT NULL DEFAULT true,
-  on_approval_needed BOOLEAN NOT NULL DEFAULT true
+  on_approval_needed BOOLEAN NOT NULL DEFAULT true,
+  on_reassigned BOOL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can view own notification prefs" ON public.notification_preferences
-  FOR SELECT TO authenticated
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Users can update own notification prefs" ON public.notification_preferences
-  FOR UPDATE TO authenticated
-  USING (user_id = auth.uid());
-
--- Service role inserts via trigger; no client INSERT policy needed.
--- Allow INSERT for the handle_new_user trigger (runs as SECURITY DEFINER).
-CREATE POLICY "System can insert notification prefs" ON public.notification_preferences
-  FOR INSERT
-  WITH CHECK (true);
+DROP POLICY IF EXISTS "Users can view own notification prefs" ON public.notification_preferences;
+DROP POLICY IF EXISTS "Users can update own notification prefs" ON public.notification_preferences;
+DROP POLICY IF EXISTS "System can insert notification prefs" ON public.notification_preferences;
+CREATE POLICY "own_all" ON public.notification_preferences FOR ALL TO authenticated
+  USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
 
 -- ============================================================
 -- 20. Expense notification triggers (via pg_net)
@@ -629,6 +678,66 @@ CREATE TRIGGER on_expense_updated
   FOR EACH ROW EXECUTE FUNCTION public.notify_expense_change();
 
 -- ============================================================
+-- 20b. Org_id + version + audit logging triggers
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.set_expense_org_id()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  NEW.org_id := public.user_org_id(NEW.user_id);
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS set_expense_org_id ON public.expenses;
+CREATE TRIGGER set_expense_org_id BEFORE INSERT ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.set_expense_org_id();
+
+CREATE OR REPLACE FUNCTION public.increment_expense_version()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  NEW.version := OLD.version + 1;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_expense_version_bump ON public.expenses;
+CREATE TRIGGER on_expense_version_bump BEFORE UPDATE ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.increment_expense_version();
+
+CREATE OR REPLACE FUNCTION public.log_expense_change()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO public.audit_log(org_id,actor_id,entity_type,entity_id,action,changes)
+    VALUES(NEW.org_id,NEW.user_id,'expense',NEW.id::TEXT,'created',
+      jsonb_build_object('amount',NEW.amount,'currency',NEW.currency,'status',NEW.status));
+  ELSIF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
+    INSERT INTO public.audit_log(org_id,actor_id,entity_type,entity_id,action,changes)
+    VALUES(NEW.org_id,COALESCE(NEW.current_approver_id,NEW.user_id),
+      'expense',NEW.id::TEXT,
+      CASE NEW.status WHEN 'approved' THEN 'approved'
+        WHEN 'rejected' THEN 'rejected' ELSE 'updated' END,
+      jsonb_build_object('from',OLD.status,'to',NEW.status));
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_expense_change ON public.expenses;
+CREATE TRIGGER on_expense_change AFTER INSERT OR UPDATE ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.log_expense_change();
+
+CREATE OR REPLACE FUNCTION public.log_export()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.audit_log(org_id,actor_id,entity_type,entity_id,action,changes)
+  VALUES(NEW.org_id,NEW.actor_id,'organization',NEW.org_id::TEXT,'exported',
+    jsonb_build_object('type',NEW.export_type,'count',NEW.record_count));
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_export ON public.exports_log;
+CREATE TRIGGER on_export AFTER INSERT ON public.exports_log
+  FOR EACH ROW EXECUTE FUNCTION public.log_export();
+
+-- ============================================================
 -- 21. Category spend limits
 -- ============================================================
 CREATE TABLE public.category_limits (
@@ -643,24 +752,14 @@ CREATE TABLE public.category_limits (
 
 ALTER TABLE public.category_limits ENABLE ROW LEVEL SECURITY;
 
--- Org members can view limits
-CREATE POLICY "Org members can view category limits" ON public.category_limits
-  FOR SELECT TO authenticated
+DROP POLICY IF EXISTS "Org members can view category limits" ON public.category_limits;
+DROP POLICY IF EXISTS "Admin can insert category limits" ON public.category_limits;
+DROP POLICY IF EXISTS "Admin can update category limits" ON public.category_limits;
+DROP POLICY IF EXISTS "Admin can delete category limits" ON public.category_limits;
+CREATE POLICY "org_select" ON public.category_limits FOR SELECT TO authenticated
   USING (org_id = public.user_org_id(auth.uid()));
-
--- Admin can manage limits
-CREATE POLICY "Admin can insert category limits" ON public.category_limits
-  FOR INSERT TO authenticated
-  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
-
-CREATE POLICY "Admin can update category limits" ON public.category_limits
-  FOR UPDATE TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
-  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
-
-CREATE POLICY "Admin can delete category limits" ON public.category_limits
-  FOR DELETE TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
+CREATE POLICY "admin_all" ON public.category_limits FOR ALL TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
 
 -- ============================================================
 -- 22. Policy exception flag on expenses
@@ -746,14 +845,17 @@ CREATE POLICY "User sees org-scoped expenses" ON public.expenses
     )
   );
 
--- Audit log org isolation (admins only see their org's logs)
-DROP POLICY IF EXISTS "Admin sees audit log" ON public.audit_log;
-CREATE POLICY "Admin sees org audit log" ON public.audit_log
-  FOR SELECT TO authenticated
-  USING (
-    org_id = public.user_org_id(auth.uid())
-    AND public.has_role(auth.uid(), 'admin')
-  );
+ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "admin_select" ON public.audit_log FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
+CREATE POLICY "auth_insert" ON public.audit_log FOR INSERT TO authenticated
+  WITH CHECK (org_id = public.user_org_id(auth.uid()));
+
+ALTER TABLE public.exports_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "org_insert" ON public.exports_log FOR INSERT TO authenticated
+  WITH CHECK (org_id = public.user_org_id(auth.uid()));
+CREATE POLICY "admin_select" ON public.exports_log FOR SELECT TO authenticated
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
 
 -- Approval history: only see history for expenses you can see
 DROP POLICY IF EXISTS "View approval history" ON public.approval_history;

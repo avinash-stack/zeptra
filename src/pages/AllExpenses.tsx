@@ -12,10 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AlertTriangle, Search, CheckCircle, XCircle, Download } from 'lucide-react';
+import { AlertTriangle, Search, CheckCircle, XCircle, Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { exportToCSV, exportToTallyXML } from '@/lib/exportUtils';
-import { logAudit } from '@/lib/auditLogger';
+import { logExport } from '@/lib/auditLogger';
 import type { ExpenseWithDetails } from '@/types/database';
 
 const AllExpenses: React.FC = () => {
@@ -118,14 +118,8 @@ const AllExpenses: React.FC = () => {
     exportToCSV(expenses, organization?.name || 'Zeptra');
     toast.success(`Exported ${expenses.length} expenses as CSV`);
     if (user && organization) {
-      logAudit({
-        org_id: organization.id,
-        actor_id: user.id,
-        entity_type: 'organization',
-        entity_id: organization.id,
-        action: 'exported',
-        changes: { type: 'csv', count: expenses.length },
-      });
+      logExport({ org_id: organization.id, actor_id: user.id,
+        export_type: 'csv', record_count: expenses.length });
     }
   };
 
@@ -135,14 +129,8 @@ const AllExpenses: React.FC = () => {
     exportToTallyXML(expenses, organization?.name || 'Zeptra');
     toast.success(`Exported ${approved.length} approved expenses as Tally XML`);
     if (user && organization) {
-      logAudit({
-        org_id: organization.id,
-        actor_id: user.id,
-        entity_type: 'organization',
-        entity_id: organization.id,
-        action: 'exported',
-        changes: { type: 'tally_xml', count: approved.length },
-      });
+      logExport({ org_id: organization.id, actor_id: user.id,
+        export_type: 'tally_xml', record_count: approved.length });
     }
   };
 
@@ -195,63 +183,73 @@ const AllExpenses: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Submitter</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-                {isFinance && <TableHead>Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground py-8">No expenses found</TableCell>
+                  <TableHead>Submitter</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Status</TableHead>
+                  {isFinance && <TableHead>Actions</TableHead>}
                 </TableRow>
-              ) : filtered.map(expense => (
-                <TableRow key={expense.id}>
-                  <TableCell>{(expense as any).users?.name || '-'}</TableCell>
-                  <TableCell>{new Date(expense.submitted_at).toLocaleDateString()}</TableCell>
-                  <TableCell>{(expense as any).expense_categories?.name || '-'}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
-                  <TableCell className="font-medium">
-                    {expense.currency === 'INR' ? '₹' : expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$'}
-                    {Number(expense.amount).toFixed(2)}
-                    <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <StatusBadge status={expense.status} managerView={true} />
-                      {expense.is_policy_exception && (
-                        <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
-                          <AlertTriangle className="mr-1 h-3 w-3" />
-                          Policy exception
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  {isFinance && (
-                    <TableCell>
-                      {(expense.status === 'pending_l1' || expense.status === 'pending_l2') && (
-                        <div className="flex gap-1">
-                          <Button size="sm" variant="ghost" className="text-success" onClick={() => handleFinanceApprove(expense)}>
-                            <CheckCircle className="h-4 w-4" />
-                          </Button>
-                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRejectExpense(expense)}>
-                            <XCircle className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={isFinance ? 7 : 6} className="text-center py-8">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground"/>
                     </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                  </TableRow>
+                ) : filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={isFinance ? 7 : 6} className="text-center py-8 text-muted-foreground">
+                      No records found
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.map(expense => (
+                  <TableRow key={expense.id}>
+                    <TableCell>{(expense as any).users?.name || '-'}</TableCell>
+                    <TableCell>{new Date(expense.submitted_at).toLocaleDateString()}</TableCell>
+                    <TableCell>{(expense as any).expense_categories?.name || '-'}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
+                    <TableCell className="font-medium">
+                      {expense.currency === 'INR' ? '₹' : expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$'}
+                      {Number(expense.amount).toFixed(2)}
+                      <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={expense.status} managerView={true} />
+                        {expense.is_policy_exception && (
+                          <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Policy exception
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    {isFinance && (
+                      <TableCell>
+                        {(expense.status === 'pending_l1' || expense.status === 'pending_l2') && (
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" className="text-success" onClick={() => handleFinanceApprove(expense)}>
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setRejectExpense(expense)}>
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </CardContent>
       </Card>
 

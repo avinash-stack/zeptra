@@ -90,6 +90,33 @@ Deno.serve(async (req) => {
     const tag = body.tag ? String(body.tag) : null;
     const redirectTo = body.redirect_to ? String(body.redirect_to) : undefined;
 
+    // Plan limit check
+    const { data: sub } = await admin.from('subscriptions')
+      .select('plan').eq('org_id', callerProfile.org_id).single();
+    const plan = sub?.plan || 'free';
+    const limits: Record<string,number|null> = {free:5, pro:50, enterprise:null};
+    const limit = limits[plan];
+    if (limit !== null) {
+      const { count } = await admin.from('profiles')
+        .select('id', { count:'exact', head:true })
+        .eq('org_id', callerProfile.org_id).eq('is_active', true);
+      if ((count||0) >= limit)
+        return json(403, { error: `${plan} plan limit reached. Upgrade to invite more.` });
+    }
+
+    // manager_id org check
+    if (managerId) {
+      const { data: mgr } = await admin.from('profiles')
+        .select('org_id').eq('id', managerId).single();
+      if (!mgr || mgr.org_id !== callerProfile.org_id)
+        return json(400, { error: 'Invalid manager_id' });
+    }
+
+    // redirect_to allowlist
+    const allowed = [Deno.env.get('SITE_URL'),'http://localhost:5173','http://localhost:3000'];
+    if (redirectTo && !allowed.some(o => o && redirectTo.startsWith(o)))
+      return json(400, { error: 'Invalid redirect_to' });
+
     if (!email || !email.includes("@")) {
       return json(400, { error: "Valid email is required" });
     }

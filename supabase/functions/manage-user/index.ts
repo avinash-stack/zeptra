@@ -78,6 +78,13 @@ Deno.serve(async (req) => {
       return json(403, { error: "Only admin users can manage password resets or delete users" });
     }
 
+    const { data: targetProfile } = await admin.from('profiles')
+      .select('org_id').eq('id', targetUserId).single();
+    const { data: callerProfile } = await admin.from('profiles')
+      .select('org_id').eq('id', callerId).single();
+    if (!targetProfile || targetProfile.org_id !== callerProfile?.org_id)
+      return json(403, { error: 'Target user not in your organization' });
+
     if (action === "reset_password") {
       if (!email || !email.includes("@")) {
         return json(400, { error: "Valid email is required" });

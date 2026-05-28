@@ -96,6 +96,18 @@ const SubmitExpense: React.FC = () => {
   const [monthlySpend, setMonthlySpend] = useState<number | null>(null);
   const [loadingLimits, setLoadingLimits] = useState(false);
 
+  const formatAmount = (amount: number | string, currency?: string) => {
+    try {
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: currency || 'INR',
+        minimumFractionDigits: 2,
+      }).format(Number(amount));
+    } catch {
+      return `${currency || '₹'} ${Number(amount).toFixed(2)}`;
+    }
+  };
+
   useEffect(() => {
     if (!profile?.org_id) return;
 
@@ -236,15 +248,55 @@ const SubmitExpense: React.FC = () => {
     }
   };
 
+  const ALLOWED_SIGNATURES: Record<string, number[][]> = {
+    'image/jpeg': [[0xFF, 0xD8, 0xFF]],
+    'image/png':  [[0x89, 0x50, 0x4E, 0x47]],
+    'image/webp': [[0x52, 0x49, 0x46, 0x46]],
+    'application/pdf': [[0x25, 0x50, 0x44, 0x46]],
+  };
+
+  const validateFileMagicBytes = (file: File): Promise<boolean> => {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const arr = new Uint8Array(e.target?.result as ArrayBuffer);
+        const matched = Object.values(ALLOWED_SIGNATURES).some(sigs =>
+          sigs.some(sig => sig.every((byte, i) => arr[i] === byte))
+        );
+        resolve(matched);
+      };
+      reader.onerror = () => resolve(false);
+      reader.readAsArrayBuffer(file.slice(0, 8));
+    });
+  };
+
   const handleReceiptChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
+
+    // Validate file size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File too large. Maximum size is 10MB.');
+      e.target.value = '';
+      return;
+    }
+
+    // Validate magic bytes (actual file type, not spoofed extension)
+    const isValidType = await validateFileMagicBytes(file);
+    if (!isValidType) {
+      toast.error('Invalid file type. Only PDF, JPG, PNG, and WebP are allowed.');
+      e.target.value = '';
+      return;
+    }
+
     setReceipt(file);
     setScanned(false);
     setReceiptUrl(null);
     setScanning(true);
+    let url: string | null = null;
+    let ocrFoundUseful = false;
     try {
-      const url = await uploadReceipt(file);
+      url = await uploadReceipt(file);
       if (!url) return;
       setReceiptUrl(url);
       const { data, error } = await supabase.functions.invoke('ocr-receipt', {
@@ -266,12 +318,21 @@ const SubmitExpense: React.FC = () => {
         if (data.amount || data.date || data.suggested_description) {
           toast.info('Receipt scanned — please review the details');
           setScanned(true);
+          ocrFoundUseful = true;
         }
       }
     } catch {
       // OCR failure is silent — never block the user
     } finally {
       setScanning(false);
+    }
+
+    // If OCR ran but returned nothing useful
+    if (url && !ocrFoundUseful) {
+      toast('Could not auto-scan receipt. Please enter details manually.', {
+        icon: '📄',
+        duration: 3000,
+      });
     }
   };
 
@@ -385,7 +446,7 @@ const SubmitExpense: React.FC = () => {
                 {perExpenseExceeded && (
                   <p className="flex items-center gap-1 text-sm text-warning">
                     <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                    This category has a per-expense limit of {formatMoney(perExpenseLimit!)}
+                    This category has a per-expense limit of {formatAmount(perExpenseLimit!, currency)}
                   </p>
                 )}
               </div>
@@ -441,7 +502,7 @@ const SubmitExpense: React.FC = () => {
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">Monthly budget</span>
                     <span className={`font-medium ${monthlyExceeded ? 'text-warning' : 'text-foreground'}`}>
-                      {formatMoney(monthlySpend)} of {formatMoney(monthlyLimit)} used this month
+                      {formatAmount(monthlySpend, currency)} of {formatAmount(monthlyLimit, currency)} used this month
                     </span>
                   </div>
                   <Progress
@@ -640,7 +701,7 @@ const SubmitExpense: React.FC = () => {
                 {gstMode === 'intra' ? (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="cgst">CGST (₹)</Label>
+                      <Label htmlFor="cgst">CGST ({currency || 'INR'})</Label>
                       <Input
                         id="cgst"
                         type="number"
@@ -657,7 +718,7 @@ const SubmitExpense: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="sgst">SGST (₹)</Label>
+                      <Label htmlFor="sgst">SGST ({currency || 'INR'})</Label>
                       <Input
                         id="sgst"
                         type="number"
@@ -676,7 +737,7 @@ const SubmitExpense: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <Label htmlFor="igst">IGST (₹)</Label>
+                    <Label htmlFor="igst">IGST ({currency || 'INR'})</Label>
                     <Input
                       id="igst"
                       type="number"
@@ -694,7 +755,7 @@ const SubmitExpense: React.FC = () => {
 
                 {/* Total GST — read-only, auto-computed */}
                 <div className="space-y-2">
-                  <Label htmlFor="total-gst">Total GST Amount (₹)</Label>
+                  <Label htmlFor="total-gst">Total GST Amount ({currency || 'INR'})</Label>
                   <Input
                     id="total-gst"
                     type="number"
@@ -722,7 +783,7 @@ const SubmitExpense: React.FC = () => {
                             <TableRow key={i}>
                               <TableCell className="text-xs font-mono">{hsn.code}</TableCell>
                               <TableCell className="text-xs">{hsn.description}</TableCell>
-                              <TableCell className="text-xs text-right">₹{Number(hsn.amount).toFixed(2)}</TableCell>
+                              <TableCell className="text-xs text-right">{formatAmount(hsn.amount, currency)}</TableCell>
                             </TableRow>
                           ))}
                         </TableBody>
@@ -744,7 +805,7 @@ const SubmitExpense: React.FC = () => {
                </div>
              )}
 
-            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-accent" disabled={loading || isSubmitting}>
+            <Button type="submit" className="w-full bg-gradient-to-r from-primary to-accent" disabled={loading || scanning || isSubmitting}>
               {(loading || isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Submit Expense
             </Button>

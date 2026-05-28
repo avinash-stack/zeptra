@@ -27,6 +27,21 @@ const Approvals: React.FC = () => {
   const [reassignCandidates, setReassignCandidates] = useState<Profile[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [analyzingIds, setAnalyzingIds] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const PAGE_SIZE = 25;
+
+  const formatAmount = (amount: number | string, currency?: string) => {
+    try {
+      return new Intl.NumberFormat('en-IN', {
+        style: 'currency',
+        currency: currency || 'INR',
+        minimumFractionDigits: 2,
+      }).format(Number(amount));
+    } catch {
+      return `${currency || '₹'} ${Number(amount).toFixed(2)}`;
+    }
+  };
 
   const analyzeExpense = async (expenseId: string) => {
     setAnalyzingIds(prev => new Set(prev).add(expenseId));
@@ -53,7 +68,7 @@ const Approvals: React.FC = () => {
   useEffect(() => {
     fetchPendingExpenses();
     fetchReassignCandidates();
-  }, [user]);
+  }, [user, page]);
 
   const fetchPendingExpenses = async () => {
     if (!user) return;
@@ -61,15 +76,17 @@ const Approvals: React.FC = () => {
 
     let query = supabase
       .from('expenses')
-      .select('*, expense_categories(name)')
+      .select('*, expense_categories(name), version')
       .in('status', ['pending_l1', 'pending_l2'])
-      .order('submitted_at', { ascending: false });
+      .order('submitted_at', { ascending: false })
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
 
     if (!isFinance) {
       query = query.eq('current_approver_id', user.id);
     }
 
     const { data } = await query;
+    setHasMore((data || []).length === PAGE_SIZE);
 
     if (data && data.length > 0) {
       // Enrich with submitter names from public.users
@@ -84,17 +101,6 @@ const Approvals: React.FC = () => {
         users: profileMap.get(e.user_id) || null,
       }));
       setExpenses(enriched as ExpenseWithDetails[]);
-
-      // Auto-analyze expenses without existing analysis
-      const analyzeSequentially = async (expenses: any[]) => {
-        for (const expense of expenses) {
-          if (!expense.ai_analysis) {
-            await analyzeExpense(expense.id);
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
-        }
-      };
-      setTimeout(() => analyzeSequentially(enriched), 500);
     } else {
       setExpenses([]);
     }
@@ -119,62 +125,59 @@ const Approvals: React.FC = () => {
     try {
       const isFinance = hasAnyRole(['finance']);
 
+      let newStatus: string;
+      let newApprover: string | null = null;
+
       if (isFinance) {
-        // Finance: always final approval
-        await supabase.from('expenses').update({
-          status: 'approved',
-          current_approver_id: null,
-          decided_at: new Date().toISOString(),
-        }).eq('id', expense.id);
-        
-        await supabase.from('approval_history').insert({
-          expense_id: expense.id,
-          approver_id: user!.id,
-          action: 'approved',
-          level: 2,
-          comments,
-        });
-      } else {
-        if (expense.status === 'pending_l1') {
-          // Check if L2 approver exists (the current approver's manager)
-          const { data: managerProfile } = await supabase
-            .from('users')
-            .select('manager_id')
-            .eq('id', user!.id)
-            .single();
+        newStatus = 'approved';
+      } else if (expense.status === 'pending_l1') {
+        const { data: managerProfile } = await supabase
+          .from('users')
+          .select('manager_id')
+          .eq('id', user!.id)
+          .single();
 
-          if (managerProfile?.manager_id) {
-            // Move to L2
-            await supabase.from('expenses').update({
-              status: 'pending_l2',
-              current_approver_id: managerProfile.manager_id,
-            }).eq('id', expense.id);
-          } else {
-            // No L2, directly approve
-            await supabase.from('expenses').update({
-              status: 'approved',
-              current_approver_id: null,
-              decided_at: new Date().toISOString(),
-            }).eq('id', expense.id);
-          }
+        if (managerProfile?.manager_id) {
+          newStatus = 'pending_l2';
+          newApprover = managerProfile.manager_id;
         } else {
-          // L2 approval → approved
-          await supabase.from('expenses').update({
-            status: 'approved',
-            current_approver_id: null,
-            decided_at: new Date().toISOString(),
-          }).eq('id', expense.id);
+          newStatus = 'approved';
         }
-
-        // Log approval history
-        await supabase.from('approval_history').insert({
-          expense_id: expense.id,
-          approver_id: user!.id,
-          action: 'approved',
-          level: expense.status === 'pending_l1' ? 1 : 2,
-          comments,
-        });
+      } else {
+        newStatus = 'approved';
       }
+
+      // Optimistic lock: only update if version and status match what we loaded
+      const updatePayload: Record<string, unknown> = {
+        status: newStatus,
+        current_approver_id: newApprover,
+      };
+      if (newStatus === 'approved') {
+        updatePayload.decided_at = new Date().toISOString();
+      }
+
+      const { data: updated, error } = await supabase
+        .from('expenses')
+        .update(updatePayload)
+        .eq('id', expense.id)
+        .eq('version', (expense as any).version)
+        .eq('status', expense.status)
+        .select('id')
+        .single();
+
+      if (error || !updated) {
+        toast.error('This expense was already actioned by another approver. Refreshing...');
+        fetchPendingExpenses();
+        return;
+      }
+
+      await supabase.from('approval_history').insert({
+        expense_id: expense.id,
+        approver_id: user!.id,
+        action: 'approved',
+        level: isFinance ? 2 : (expense.status === 'pending_l1' ? 1 : 2),
+        comments,
+      });
 
       toast.success('Expense approved');
       setActionExpense(null);
@@ -191,11 +194,25 @@ const Approvals: React.FC = () => {
       return;
     }
     try {
-      await supabase.from('expenses').update({
-        status: 'rejected',
-        current_approver_id: null,
-        decided_at: new Date().toISOString(),
-      }).eq('id', expense.id);
+      // Optimistic lock: only update if version and status match what we loaded
+      const { data: updated, error } = await supabase
+        .from('expenses')
+        .update({
+          status: 'rejected',
+          current_approver_id: null,
+          decided_at: new Date().toISOString(),
+        })
+        .eq('id', expense.id)
+        .eq('version', (expense as any).version)
+        .eq('status', expense.status)
+        .select('id')
+        .single();
+
+      if (error || !updated) {
+        toast.error('This expense was already actioned by another approver. Refreshing...');
+        fetchPendingExpenses();
+        return;
+      }
 
       await supabase.from('approval_history').insert({
         expense_id: expense.id,
@@ -217,9 +234,23 @@ const Approvals: React.FC = () => {
   const handleReassign = async (expense: ExpenseWithDetails) => {
     if (!reassignTo) return;
     try {
-      await supabase.from('expenses').update({
-        current_approver_id: reassignTo,
-      }).eq('id', expense.id);
+      // Optimistic lock: only update if version and status match what we loaded
+      const { data: updated, error } = await supabase
+        .from('expenses')
+        .update({
+          current_approver_id: reassignTo,
+        })
+        .eq('id', expense.id)
+        .eq('version', (expense as any).version)
+        .eq('status', expense.status)
+        .select('id')
+        .single();
+
+      if (error || !updated) {
+        toast.error('This expense was already actioned by another approver. Refreshing...');
+        fetchPendingExpenses();
+        return;
+      }
 
       await supabase.from('approval_history').insert({
         expense_id: expense.id,
@@ -247,6 +278,11 @@ const Approvals: React.FC = () => {
     setReassignTo('');
   };
 
+  // Reset to first page when search changes
+  useEffect(() => {
+    setPage(0);
+  }, [searchTerm]);
+
   const filtered = expenses.filter(e =>
     (e as any).users?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     e.description.toLowerCase().includes(searchTerm.toLowerCase())
@@ -267,75 +303,96 @@ const Approvals: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Submitter</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Risk</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.length === 0 ? (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
-                    No pending approvals
-                  </TableCell>
+                  <TableHead>Submitter</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Category</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Amount</TableHead>
+                  <TableHead>Risk</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ) : filtered.map(expense => (
-                <TableRow key={expense.id}>
-                  <TableCell>{(expense as any).users?.name || '-'}</TableCell>
-                  <TableCell>{new Date(expense.submitted_at).toLocaleDateString()}</TableCell>
-                  <TableCell>{(expense as any).expense_categories?.name || '-'}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
-                  <TableCell>
-                    {expense.currency === 'INR' ? '₹' : expense.currency === 'EUR' ? '€' : expense.currency === 'GBP' ? '£' : '$'}
-                    {Number(expense.amount).toFixed(2)}
-                    <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
-                  </TableCell>
-                  <TableCell>
-                    <RiskBadge
-                      analysis={(expense as any).ai_analysis}
-                      loading={analyzingIds.has(expense.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <StatusBadge status={expense.status} managerView={true} />
-                      {expense.is_policy_exception && (
-                        <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
-                          <AlertTriangle className="mr-1 h-3 w-3" />
-                          Policy exception
-                        </Badge>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="ghost" className="text-success" onClick={() => openAction(expense, 'approve')}>
-                        <CheckCircle className="h-4 w-4" />
-                      </Button>
-                      {(hasAnyRole(['finance']) || hasRole('admin')) && (
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => openAction(expense, 'reject')}>
-                          <XCircle className="h-4 w-4" />
+              </TableHeader>
+              <TableBody>
+                {filtered.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      No pending approvals
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.map(expense => (
+                  <TableRow key={expense.id}>
+                    <TableCell>{(expense as any).users?.name || '-'}</TableCell>
+                    <TableCell>{new Date(expense.submitted_at).toLocaleDateString()}</TableCell>
+                    <TableCell>{(expense as any).expense_categories?.name || '-'}</TableCell>
+                    <TableCell className="max-w-[200px] truncate">{expense.description}</TableCell>
+                    <TableCell>
+                      {formatAmount(expense.amount, expense.currency)}
+                      <span className="text-xs text-muted-foreground ml-1">{expense.currency}</span>
+                    </TableCell>
+                    <TableCell>
+                      {(expense as any).ai_analysis ? (
+                        <RiskBadge analysis={(expense as any).ai_analysis} />
+                      ) : analyzingIds.has(expense.id) ? (
+                        <RiskBadge analysis={null} loading={true} />
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => analyzeExpense(expense.id)}
+                        >
+                          Analyze
                         </Button>
                       )}
-                      {!hasAnyRole(['finance']) && (
-                        <Button size="sm" variant="ghost" onClick={() => openAction(expense, 'reassign')}>
-                          <ArrowRight className="h-4 w-4" />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={expense.status} managerView={true} />
+                        {expense.is_policy_exception && (
+                          <Badge variant="outline" className="bg-warning/15 text-warning border-warning/30">
+                            <AlertTriangle className="mr-1 h-3 w-3" />
+                            Policy exception
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" className="text-success" onClick={() => openAction(expense, 'approve')}>
+                          <CheckCircle className="h-4 w-4" />
                         </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        {(hasAnyRole(['finance']) || hasRole('admin')) && (
+                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => openAction(expense, 'reject')}>
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
+                        {!hasAnyRole(['finance']) && (
+                          <Button size="sm" variant="ghost" onClick={() => openAction(expense, 'reassign')}>
+                            <ArrowRight className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex items-center justify-between mt-4">
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p - 1)} disabled={page === 0}>
+              ← Previous
+            </Button>
+            <span className="text-sm text-muted-foreground">Page {page + 1}</span>
+            <Button variant="outline" size="sm" onClick={() => setPage(p => p + 1)} disabled={!hasMore}>
+              Next →
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -348,8 +405,7 @@ const Approvals: React.FC = () => {
             {actionExpense && (
               <div className="p-3 bg-muted rounded-lg">
                 <p className="font-medium">
-                  {actionExpense.currency === 'INR' ? '₹' : actionExpense.currency === 'EUR' ? '€' : '$'}
-                  {Number(actionExpense.amount).toFixed(2)} {actionExpense.currency}
+                  {formatAmount(actionExpense.amount, actionExpense.currency)} {actionExpense.currency}
                 </p>
                 <p className="text-sm text-muted-foreground">{actionExpense.description}</p>
                 {actionExpense.is_policy_exception && (

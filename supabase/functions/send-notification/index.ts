@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
 
+const esc = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+  .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -38,6 +41,11 @@ function buildEmailHtml(params: {
   approverName?: string;
 }): { subject: string; html: string } {
   const { orgName, event, employeeName, amount, currency, category, description, comments, approverName } = params;
+  const orgNameEsc = esc(orgName);
+  const employeeNameEsc = esc(employeeName);
+  const descriptionEsc = esc(description);
+  const commentsEsc = esc(comments || "");
+  const approverNameEsc = esc(approverName || "");
   const sym = currencySymbol(currency);
   const formattedAmount = `${sym}${Number(amount).toFixed(2)}`;
 
@@ -48,49 +56,49 @@ function buildEmailHtml(params: {
 
   switch (event) {
     case "submitted":
-      subject = `[${orgName}] Action required: ${employeeName} submitted ${formattedAmount} for ${category}`;
+      subject = `[${orgNameEsc}] Action required: ${employeeNameEsc} submitted ${formattedAmount} for ${category}`;
       heading = "New Expense Awaiting Your Approval";
       accentColor = "#6366f1";
       body = `
-        <p><strong>${employeeName}</strong> has submitted an expense that requires your review.</p>
+        <p><strong>${employeeNameEsc}</strong> has submitted an expense that requires your review.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${description}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
         <p style="color:#6b7280;font-size:14px;">Log in to Zeptra to approve or reject this expense.</p>
       `;
       break;
 
     case "approved":
-      subject = `[${orgName}] Your expense of ${formattedAmount} was approved`;
+      subject = `[${orgNameEsc}] Your expense of ${formattedAmount} was approved`;
       heading = "Expense Approved ✓";
       accentColor = "#22c55e";
       body = `
-        <p>Great news! Your expense has been approved${approverName ? ` by <strong>${approverName}</strong>` : ""}.</p>
+        <p>Great news! Your expense has been approved${approverName ? ` by <strong>${approverNameEsc}</strong>` : ""}.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${description}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
       `;
       break;
 
     case "rejected":
-      subject = `[${orgName}] Your expense of ${formattedAmount} was rejected`;
+      subject = `[${orgNameEsc}] Your expense of ${formattedAmount} was rejected`;
       heading = "Expense Rejected";
       accentColor = "#ef4444";
       body = `
-        <p>Unfortunately, your expense has been rejected${approverName ? ` by <strong>${approverName}</strong>` : ""}.</p>
+        <p>Unfortunately, your expense has been rejected${approverName ? ` by <strong>${approverNameEsc}</strong>` : ""}.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${description}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
         ${comments ? `
         <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 16px;border-radius:4px;margin:16px 0;">
           <p style="margin:0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Reason</p>
-          <p style="margin:4px 0 0;color:#1f2937;">${comments}</p>
+          <p style="margin:4px 0 0;color:#1f2937;">${commentsEsc}</p>
         </div>
         ` : ""}
         <p style="color:#6b7280;font-size:14px;">You can revise and resubmit the expense from your dashboard.</p>
@@ -98,21 +106,21 @@ function buildEmailHtml(params: {
       break;
 
     case "reassigned":
-      subject = `[${orgName}] An expense has been reassigned to you`;
+      subject = `[${orgNameEsc}] An expense has been reassigned to you`;
       heading = "Expense Reassigned to You";
       accentColor = "#f59e0b";
       body = `
         <p>An expense has been reassigned to you for review.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-          <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Submitted by</td><td style="padding:8px 12px;font-weight:600;">${employeeName}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Submitted by</td><td style="padding:8px 12px;font-weight:600;">${employeeNameEsc}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${description}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
         ${comments ? `
         <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:4px;margin:16px 0;">
           <p style="margin:0;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;">Notes from previous reviewer</p>
-          <p style="margin:4px 0 0;color:#1f2937;">${comments}</p>
+          <p style="margin:4px 0 0;color:#1f2937;">${commentsEsc}</p>
         </div>
         ` : ""}
         <p style="color:#6b7280;font-size:14px;">Log in to Zeptra to review this expense.</p>
@@ -130,7 +138,7 @@ function buildEmailHtml(params: {
       <!-- Header -->
       <div style="background:linear-gradient(135deg,${accentColor},${accentColor}dd);padding:24px 32px;">
         <h1 style="margin:0;color:#ffffff;font-size:20px;font-weight:600;">${heading}</h1>
-        <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">${orgName}</p>
+        <p style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">${orgNameEsc}</p>
       </div>
       <!-- Body -->
       <div style="padding:24px 32px;">

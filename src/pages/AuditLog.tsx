@@ -7,10 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Shield, Download, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Shield, Download, ChevronLeft, ChevronRight, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import { logAudit } from '@/lib/auditLogger';
+import { logExport } from '@/lib/auditLogger';
 import type { AuditLog as AuditLogEntry } from '@/types/database';
 
 const PAGE_SIZE = 50;
@@ -49,9 +49,11 @@ const AuditLog: React.FC = () => {
       if (entityFilter !== 'all') query = query.eq('entity_type', entityFilter);
       if (actionFilter !== 'all') query = query.eq('action', actionFilter);
 
-      const { data } = await query;
+      const { data, error } = await query;
+      if (error) throw error;
       setLogs((data as AuditLogEntry[]) || []);
-    } catch {
+    } catch (err) {
+      console.error('AuditLog fetch error:', err);
       toast.error('Failed to fetch audit logs');
     } finally {
       setLoading(false);
@@ -94,14 +96,8 @@ const AuditLog: React.FC = () => {
 
     // Log this export action
     if (user && organization) {
-      logAudit({
-        org_id: organization.id,
-        actor_id: user.id,
-        entity_type: 'organization',
-        entity_id: organization.id,
-        action: 'exported',
-        changes: { type: 'audit_csv', count: logs.length },
-      });
+      logExport({ org_id: organization.id, actor_id: user.id,
+        export_type: 'audit_csv', record_count: logs.length });
     }
   };
 
@@ -163,6 +159,7 @@ const AuditLog: React.FC = () => {
         </CardHeader>
 
         <CardContent>
+          <div className="overflow-x-auto rounded-lg border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -175,17 +172,13 @@ const AuditLog: React.FC = () => {
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    Loading audit logs...
-                  </TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground"/>
+                </TableCell></TableRow>
               ) : logs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    No audit entries found
-                  </TableCell>
-                </TableRow>
+                <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                  No records found
+                </TableCell></TableRow>
               ) : (
                 logs.map(log => {
                   const badgeStyle = ACTION_BADGE[log.action] || { variant: 'secondary' as const };
@@ -230,6 +223,7 @@ const AuditLog: React.FC = () => {
               )}
             </TableBody>
           </Table>
+          </div>
 
           {/* Pagination */}
           <div className="flex items-center justify-between mt-4 pt-4 border-t">

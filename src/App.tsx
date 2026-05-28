@@ -1,3 +1,4 @@
+import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
@@ -23,6 +24,28 @@ import AuditLog from "@/pages/AuditLog";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
+
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(p: any) { super(p); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center p-8">
+          <h1 className="text-xl font-bold mb-4">Something went wrong</h1>
+          <button className="bg-primary text-white px-4 py-2 rounded"
+            onClick={() => { this.setState({ hasError: false }); window.location.href = '/app'; }}>
+            Return to dashboard
+          </button>
+        </div>
+      </div>
+    );
+    return this.props.children;
+  }
+}
 
 const ProtectedRoute = ({ children, allowedRoles, requireManager }: {
   children: React.ReactNode;
@@ -71,48 +94,50 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<AuthRoute><Landing /></AuthRoute>} />
-            <Route path="/create-organization" element={<OrganizationProfile />} />
-            <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
-            <Route path="/set-password" element={<SetPassword />} />
-            <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
-              <Route index element={<Dashboard />} />
-              <Route path="submit" element={<SubmitExpense />} />
-              <Route path="expenses" element={<MyExpenses />} />
-              <Route path="approvals" element={
-                <ProtectedRoute allowedRoles={['admin', 'finance']} requireManager>
-                  <Approvals />
-                </ProtectedRoute>
-              } />
-              <Route path="all-expenses" element={
-                <ProtectedRoute allowedRoles={['finance', 'admin']}>
-                  <AllExpenses />
-                </ProtectedRoute>
-              } />
-              <Route path="users" element={
-                <ProtectedRoute allowedRoles={['admin', 'hr']}>
-                  <UserManagement />
-                </ProtectedRoute>
-              } />
-              <Route path="settings" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <OrgSettings />
-                </ProtectedRoute>
-              } />
-              <Route path="audit" element={
-                <ProtectedRoute allowedRoles={['admin']}>
-                  <AuditLog />
-                </ProtectedRoute>
-              } />
-              <Route path="account" element={<AccountSettings />} />
-              <Route path="help" element={<Help />} />
-              <Route path="profile" element={<ProfilePage />} />
-            </Route>
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <AppErrorBoundary>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<AuthRoute><Landing /></AuthRoute>} />
+              <Route path="/create-organization" element={<OrganizationProfile />} />
+              <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+              <Route path="/set-password" element={<SetPassword />} />
+              <Route path="/app" element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                <Route index element={<Dashboard />} />
+                <Route path="submit" element={<SubmitExpense />} />
+                <Route path="expenses" element={<MyExpenses />} />
+                <Route path="approvals" element={
+                  <ProtectedRoute allowedRoles={['admin', 'finance']} requireManager>
+                    <Approvals />
+                  </ProtectedRoute>
+                } />
+                <Route path="all-expenses" element={
+                  <ProtectedRoute allowedRoles={['finance', 'admin']}>
+                    <AllExpenses />
+                  </ProtectedRoute>
+                } />
+                <Route path="users" element={
+                  <ProtectedRoute allowedRoles={['admin', 'hr']}>
+                    <UserManagement />
+                  </ProtectedRoute>
+                } />
+                <Route path="settings" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <OrgSettings />
+                  </ProtectedRoute>
+                } />
+                <Route path="audit" element={
+                  <ProtectedRoute allowedRoles={['admin']}>
+                    <AuditLog />
+                  </ProtectedRoute>
+                } />
+                <Route path="account" element={<AccountSettings />} />
+                <Route path="help" element={<Help />} />
+                <Route path="profile" element={<ProfilePage />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </AppErrorBoundary>
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>

@@ -34,16 +34,16 @@ export function RiskBadge({ analysis, loading }: RiskBadgeProps) {
       </PopoverTrigger>
       <PopoverContent className="w-72 p-3" align="start">
         <p className="text-xs font-medium text-foreground mb-2">AI Analysis</p>
-        {analysis.flags.length > 0 && (
+        {(Array.isArray(analysis?.flags) ? analysis.flags : []).length > 0 && (
           <ul className="space-y-1 mb-2">
-            {analysis.flags.map((flag, i) => (
+            {(Array.isArray(analysis?.flags) ? analysis.flags : []).map((flag, i) => (
               <li key={i} className="text-xs text-muted-foreground flex gap-1">
                 <span className="text-amber-500 flex-shrink-0">•</span> {flag}
               </li>
             ))}
           </ul>
         )}
-        {analysis.suggestion && (
+        {typeof analysis?.suggestion === 'string' && analysis.suggestion && (
           <p className="text-xs text-foreground bg-muted/50 rounded p-2">{analysis.suggestion}</p>
         )}
       </PopoverContent>

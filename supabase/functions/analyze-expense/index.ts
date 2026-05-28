@@ -176,7 +176,18 @@ Flags examples (use only what actually applies):
 
     let analysis = { ...defaultAnalysis };
     try {
-      analysis = JSON.parse(clean);
+      const parsed = JSON.parse(clean);
+      analysis = {
+        risk_level: ["low", "medium", "high"].includes(parsed?.risk_level)
+          ? parsed.risk_level
+          : "low",
+        flags: Array.isArray(parsed?.flags)
+          ? parsed.flags.filter((f: unknown) => typeof f === "string")
+          : [],
+        suggestion: typeof parsed?.suggestion === "string"
+          ? parsed.suggestion.slice(0, 200)
+          : "",
+      };
     } catch {
       // Use default
     }

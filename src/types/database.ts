@@ -80,6 +80,7 @@ export interface Expense {
   submitted_at: string;
   decided_at: string | null;
   is_policy_exception: boolean;
+  version: number;
   created_at: string;
   updated_at: string;
 }

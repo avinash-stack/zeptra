@@ -372,6 +372,7 @@ const OrgSettings: React.FC = () => {
               </Button>
             </CardHeader>
             <CardContent>
+              <div className="overflow-x-auto rounded-lg border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -435,6 +436,7 @@ const OrgSettings: React.FC = () => {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -452,6 +454,7 @@ const OrgSettings: React.FC = () => {
               </Button>
             </CardHeader>
             <CardContent>
+              <div className="overflow-x-auto rounded-lg border border-border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -500,6 +503,7 @@ const OrgSettings: React.FC = () => {
                   )}
                 </TableBody>
               </Table>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

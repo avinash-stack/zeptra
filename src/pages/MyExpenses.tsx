@@ -124,6 +124,7 @@ const MyExpenses: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
+          <div className="overflow-x-auto rounded-lg border border-border">
           <Table>
             <TableHeader>
               <TableRow>
@@ -175,6 +176,7 @@ const MyExpenses: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 
