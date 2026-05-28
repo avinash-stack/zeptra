@@ -291,10 +291,11 @@ const OrgSettings: React.FC = () => {
     }
   };
 
-  const usagePercent = (current: number, max: number) => {
-    if (max === -1) return 0; // unlimited
-    if (max === 0) return 100;
-    return Math.min(Math.round((current / max) * 100), 100);
+  const usagePercent = (current: number, max: number | null | undefined, fallback: number) => {
+    if (max === null) return 0; // unlimited
+    const effectiveMax = max ?? fallback;
+    if (effectiveMax === 0) return 100;
+    return Math.min(Math.round((current / effectiveMax) * 100), 100);
   };
 
   return (
@@ -558,11 +559,11 @@ const OrgSettings: React.FC = () => {
                     <div className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-2"><Users className="h-4 w-4" /> Users</span>
                       <span className="font-medium">
-                        {billing.userCount} / {billing.limits?.max_users === -1 ? '∞' : billing.limits?.max_users ?? '–'}
+                        {billing.userCount} / {billing.limits?.max_users === null ? '∞' : billing.limits?.max_users ?? '–'}
                       </span>
                     </div>
                     <Progress
-                      value={usagePercent(billing.userCount, billing.limits?.max_users ?? 5)}
+                      value={usagePercent(billing.userCount, billing.limits?.max_users, 5)}
                       className="h-2"
                     />
                     {billing.userLimitReached && (
@@ -573,11 +574,11 @@ const OrgSettings: React.FC = () => {
                     <div className="flex items-center justify-between text-sm">
                       <span className="flex items-center gap-2"><Receipt className="h-4 w-4" /> Expenses this month</span>
                       <span className="font-medium">
-                        {billing.expenseCount} / {billing.limits?.max_expenses_per_month === -1 ? '∞' : billing.limits?.max_expenses_per_month ?? '–'}
+                        {billing.expenseCount} / {billing.limits?.max_expenses_per_month === null ? '∞' : billing.limits?.max_expenses_per_month ?? '–'}
                       </span>
                     </div>
                     <Progress
-                      value={usagePercent(billing.expenseCount, billing.limits?.max_expenses_per_month ?? 50)}
+                      value={usagePercent(billing.expenseCount, billing.limits?.max_expenses_per_month, 50)}
                       className="h-2"
                     />
                     {billing.expenseLimitReached && (

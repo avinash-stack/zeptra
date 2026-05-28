@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -22,15 +24,29 @@ Deno.serve(async (req) => {
       return json(401, { error: "Missing bearer token" });
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
+    if (!supabaseUrl || !serviceRoleKey) {
+      return json(500, { error: "Missing Supabase configuration" });
+    }
     if (!anthropicKey) {
       console.error("ANTHROPIC_API_KEY not configured");
-      return json(200, {});
+      return json(500, { error: "AI provider is not configured" });
+    }
+
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: authData, error: authError } = await admin.auth.getUser(token);
+    if (authError || !authData.user) {
+      return json(401, { error: "Invalid auth token" });
     }
 
     const body = await req.json().catch(() => null);
     if (!body) {
-      return json(200, {});
+      return json(400, { error: "Invalid request payload" });
     }
 
     const { description, vendor, categories } = body as {
@@ -39,9 +55,12 @@ Deno.serve(async (req) => {
       categories?: { id: string; name: string }[];
     };
 
-    // Guard: too short or no categories
-    if (!description || description.length < 5) return json(200, {});
-    if (!categories || categories.length === 0) return json(200, {});
+    if (!description || description.length < 5) {
+      return json(400, { error: "description must be at least 5 characters" });
+    }
+    if (!Array.isArray(categories) || categories.length === 0) {
+      return json(400, { error: "categories are required" });
+    }
 
     const prompt = `You are an expense categorization assistant.
 Given this expense description: "${description}"${vendor ? ` from vendor: "${vendor}"` : ""}
@@ -67,7 +86,7 @@ If none fit well, reply with the closest match.`;
 
     if (!claudeRes.ok) {
       console.error("Anthropic API error:", await claudeRes.text());
-      return json(200, {});
+      return json(502, { error: "AI provider failed" });
     }
 
     const claudeData = await claudeRes.json();
@@ -82,11 +101,10 @@ If none fit well, reply with the closest match.`;
       return json(200, { id: match.id, name: match.name });
     }
 
-    return json(200, {});
+    return json(404, { error: "No matching category returned" });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("suggest-category error:", message);
-    // Never block the user
-    return json(200, {});
+    return json(500, { error: "Failed to suggest category" });
   }
 });

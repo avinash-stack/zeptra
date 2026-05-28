@@ -13,6 +13,81 @@ const json = (status: number, payload: Record<string, unknown>) =>
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
+const textEncoder = new TextEncoder();
+const maxReceiptBytes = 10 * 1024 * 1024;
+
+async function hmac(key: Uint8Array | CryptoKey, data: string): Promise<Uint8Array> {
+  const cryptoKey = key instanceof CryptoKey
+    ? key
+    : await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, textEncoder.encode(data));
+  return new Uint8Array(signature);
+}
+
+async function sha256(data: string): Promise<string> {
+  const hash = await crypto.subtle.digest("SHA-256", textEncoder.encode(data));
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function toHex(buffer: Uint8Array): string {
+  return Array.from(buffer)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function getSignatureKey(
+  key: string,
+  dateStamp: string,
+  regionName: string,
+  serviceName: string,
+): Promise<Uint8Array> {
+  const kSecret = textEncoder.encode("AWS4" + key);
+  const kDate = await hmac(kSecret, dateStamp);
+  const kRegion = await hmac(kDate, regionName);
+  const kService = await hmac(kRegion, serviceName);
+  return await hmac(kService, "aws4_request");
+}
+
+async function createPresignedGetUrl(
+  accessKeyId: string,
+  secretAccessKey: string,
+  region: string,
+  bucket: string,
+  key: string,
+  expiresInSeconds = 120,
+) {
+  const method = "GET";
+  const service = "s3";
+  const host = `${bucket}.s3.${region}.amazonaws.com`;
+  const endpoint = `https://${host}/${key}`;
+  const now = new Date();
+  const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  const dateStamp = amzDate.substring(0, 8);
+  const canonicalUri = "/" + key.split("/").map(encodeURIComponent).join("/");
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const credential = encodeURIComponent(`${accessKeyId}/${credentialScope}`);
+  const canonicalQuerystring = `X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=${credential}&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresInSeconds}&X-Amz-SignedHeaders=host`;
+  const canonicalHeaders = `host:${host}\n`;
+  const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\nhost\nUNSIGNED-PAYLOAD`;
+  const canonicalRequestHash = await sha256(canonicalRequest);
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${canonicalRequestHash}`;
+  const signingKey = await getSignatureKey(secretAccessKey, dateStamp, region, service);
+  const signature = toHex(await hmac(signingKey, stringToSign));
+  return `${endpoint}?${canonicalQuerystring}&X-Amz-Signature=${signature}`;
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -22,13 +97,17 @@ Deno.serve(async (req) => {
     const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
     if (!geminiApiKey) {
       console.error("GEMINI_API_KEY not configured");
-      return json(200, {});
+      return json(500, { error: "OCR provider is not configured" });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!supabaseUrl || !serviceRoleKey) {
-      return json(500, { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in function environment" });
+    const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
+    const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
+    const region = Deno.env.get("AWS_REGION");
+    const bucket = Deno.env.get("AWS_S3_BUCKET");
+    if (!supabaseUrl || !serviceRoleKey || !accessKeyId || !secretAccessKey || !region || !bucket) {
+      return json(500, { error: "Missing OCR storage configuration" });
     }
 
     const authHeader = req.headers.get("Authorization");
@@ -49,15 +128,29 @@ Deno.serve(async (req) => {
       return json(400, { error: "Invalid request payload" });
     }
 
-    const { receipt_url } = body as { receipt_url?: string };
-    if (!receipt_url) {
-      return json(400, { error: "receipt_url is required" });
+    const { receipt_key } = body as { receipt_key?: string };
+    if (!receipt_key) {
+      return json(400, { error: "receipt_key is required" });
+    }
+    if (!receipt_key.startsWith(`receipts/${caller.id}/`)) {
+      return json(403, { error: "Receipt does not belong to the authenticated user" });
     }
 
     // Download the receipt image
-    const imageRes = await fetch(receipt_url);
+    const receiptUrl = await createPresignedGetUrl(
+      accessKeyId,
+      secretAccessKey,
+      region,
+      bucket,
+      receipt_key,
+    );
+    const imageRes = await fetch(receiptUrl);
     if (!imageRes.ok) {
       return json(400, { error: "Could not fetch receipt image" });
+    }
+    const contentLength = Number(imageRes.headers.get("content-length") || "0");
+    if (contentLength > maxReceiptBytes) {
+      return json(400, { error: "Receipt file exceeds 10MB limit" });
     }
 
     // Detect MIME type from Content-Type header, fallback to jpeg
@@ -65,9 +158,10 @@ Deno.serve(async (req) => {
     const mimeType = contentType.split(";")[0].trim();
 
     const imageBuffer = await imageRes.arrayBuffer();
-    const base64Image = btoa(
-      String.fromCharCode(...new Uint8Array(imageBuffer)),
-    );
+    if (imageBuffer.byteLength > maxReceiptBytes) {
+      return json(400, { error: "Receipt file exceeds 10MB limit" });
+    }
+    const base64Image = arrayBufferToBase64(imageBuffer);
 
     // Call Gemini API with structured extraction prompt
     const geminiRes = await fetch(
@@ -123,7 +217,7 @@ Rules:
 
     if (!geminiRes.ok) {
       console.error("Gemini API error:", await geminiRes.text());
-      return json(200, {});
+      return json(502, { error: "OCR provider failed" });
     }
 
     const geminiData = await geminiRes.json();
@@ -131,7 +225,7 @@ Rules:
       geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
     if (!rawText) {
-      return json(200, {});
+      return json(502, { error: "OCR provider returned no text" });
     }
 
     // Strip markdown fences if Gemini wraps the JSON
@@ -142,7 +236,7 @@ Rules:
       parsed = JSON.parse(cleaned);
     } catch {
       console.error("Failed to parse Gemini response:", cleaned.slice(0, 200));
-      return json(200, {});
+      return json(502, { error: "OCR provider returned malformed data" });
     }
 
     // Return the structured result — only include fields that have values
@@ -162,7 +256,6 @@ Rules:
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("ocr-receipt error:", message);
-    // Graceful fallback: never throw, return empty
-    return json(200, {});
+    return json(500, { error: "OCR failed" });
   }
 });

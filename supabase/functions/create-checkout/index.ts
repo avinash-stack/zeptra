@@ -139,9 +139,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build success/cancel URLs
-    const origin = req.headers.get("origin") || req.headers.get("referer") || "";
-    const baseUrl = origin.replace(/\/$/, "");
+    // Build success/cancel URLs from trusted config only
+    const configuredSiteUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
+    const baseUrl = configuredSiteUrl.replace(/\/$/, "");
     const successUrl = `${baseUrl}/settings?tab=billing&checkout=success`;
     const cancelUrl = `${baseUrl}/settings?tab=billing&checkout=canceled`;
 

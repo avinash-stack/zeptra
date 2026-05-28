@@ -42,7 +42,8 @@ const MyExpenses: React.FC = () => {
       .from('expenses')
       .select('*, expense_categories(name)')
       .eq('user_id', user.id)
-      .order('submitted_at', { ascending: false });
+      .order('submitted_at', { ascending: false })
+      .range(0, 99);
 
     if (statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
@@ -69,14 +70,19 @@ const MyExpenses: React.FC = () => {
 
   const handleEdit = async () => {
     if (!editingExpense) return;
-    const { error } = await supabase.from('expenses').update({
+    const { data: updatedExpense, error } = await supabase.from('expenses').update({
       amount: parseFloat(editAmount),
       description: editDescription,
       category_id: editCategoryId,
-    }).eq('id', editingExpense.id);
+    })
+      .eq('id', editingExpense.id)
+      .eq('version', editingExpense.version)
+      .eq('status', editingExpense.status)
+      .select('id')
+      .single();
 
-    if (error) {
-      toast.error('Failed to update expense');
+    if (error || !updatedExpense) {
+      toast.error(error?.message || 'Expense was changed. Refresh and try again.');
     } else {
       toast.success('Expense updated');
       setEditingExpense(null);

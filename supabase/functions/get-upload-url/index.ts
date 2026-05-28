@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.50.0";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -11,6 +13,13 @@ const json = (status: number, payload: Record<string, unknown>) =>
   });
 
 const textEncoder = new TextEncoder();
+const maxReceiptBytes = 10 * 1024 * 1024;
+const allowedMimeTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
 
 async function hmac(key: Uint8Array | CryptoKey, data: string): Promise<Uint8Array> {
   const cryptoKey = key instanceof CryptoKey
@@ -98,23 +107,40 @@ Deno.serve(async (req) => {
       return json(401, { error: "Missing bearer token" });
     }
 
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
     const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID");
     const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY");
     const region = Deno.env.get("AWS_REGION");
     const bucket = Deno.env.get("AWS_S3_BUCKET");
 
-    if (!accessKeyId || !secretAccessKey || !region || !bucket) {
-      console.error("AWS credentials or S3 bucket not configured properly");
+    if (!supabaseUrl || !serviceRoleKey || !accessKeyId || !secretAccessKey || !region || !bucket) {
+      console.error("Supabase or AWS configuration missing");
       return json(500, { error: "AWS configuration missing" });
     }
 
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const { data: authData, error: authError } = await admin.auth.getUser(token);
+    if (authError || !authData.user) {
+      return json(401, { error: "Invalid auth token" });
+    }
+
     const body = await req.json().catch(() => null);
-    if (!body?.file_name || !body?.user_id) {
-      return json(400, { error: "file_name and user_id are required" });
+    if (!body?.file_name || !body?.file_type || typeof body?.file_size !== "number") {
+      return json(400, { error: "file_name, file_type, and file_size are required" });
+    }
+    if (!allowedMimeTypes.has(String(body.file_type))) {
+      return json(400, { error: "Unsupported receipt file type" });
+    }
+    if (body.file_size <= 0 || body.file_size > maxReceiptBytes) {
+      return json(400, { error: "Receipt file exceeds 10MB limit" });
     }
 
     const sanitizedFileName = body.file_name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const key = `receipts/${body.user_id}/${Date.now()}-${sanitizedFileName}`;
+    const key = `receipts/${authData.user.id}/${Date.now()}-${sanitizedFileName}`;
 
     const upload_url = await createPresignedUrl(
       accessKeyId,
@@ -124,9 +150,7 @@ Deno.serve(async (req) => {
       key,
     );
 
-    const public_url = `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
-
-    return json(200, { upload_url, public_url });
+    return json(200, { upload_url, receipt_key: key });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("get-upload-url error:", message);

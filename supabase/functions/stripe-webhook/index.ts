@@ -86,8 +86,9 @@ Deno.serve(async (req) => {
     const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET");
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
 
-    if (!webhookSecret || !supabaseUrl || !serviceRoleKey) {
+    if (!webhookSecret || !supabaseUrl || !serviceRoleKey || !stripeSecretKey) {
       return json(500, { error: "Missing required environment variables" });
     }
 
@@ -119,7 +120,6 @@ Deno.serve(async (req) => {
         const stripeSubscriptionId = session.subscription;
 
         // Retrieve subscription details from Stripe to get plan and period info
-        const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY") || "";
         const subRes = await fetch(
           `https://api.stripe.com/v1/subscriptions/${stripeSubscriptionId}`,
           {

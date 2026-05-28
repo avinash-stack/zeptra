@@ -8,7 +8,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 1. Enums
 -- ============================================================
 -- NOTE: 'manager' role removed. Manager access is determined by
--- the profiles.manager_id relationship (anyone tagged as a
+-- the users.manager_id relationship (anyone tagged as a
 -- manager_id on another user's profile gets approval access).
 CREATE TYPE public.app_role AS ENUM ('admin', 'employee', 'hr', 'finance');
 CREATE TYPE public.expense_status AS ENUM ('pending_l1', 'pending_l2', 'approved', 'rejected');
@@ -43,9 +43,9 @@ CREATE TABLE public.org_currencies (
 );
 
 -- ============================================================
--- 4. Profiles table
+-- 4. Users table
 -- ============================================================
-CREATE TABLE public.profiles (
+CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   org_id UUID REFERENCES public.organizations(id),
   name TEXT NOT NULL,
@@ -53,7 +53,7 @@ CREATE TABLE public.profiles (
   first_name TEXT,
   last_name TEXT,
   phone TEXT,
-  manager_id UUID REFERENCES public.profiles(id),
+  manager_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   tag TEXT,
   status public.profile_status DEFAULT 'active' NOT NULL,
   is_active BOOLEAN DEFAULT true NOT NULL,
@@ -66,7 +66,7 @@ CREATE TABLE public.profiles (
 -- ============================================================
 CREATE TABLE public.user_roles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
   role public.app_role NOT NULL,
   UNIQUE (user_id, role)
 );
@@ -90,14 +90,14 @@ CREATE TABLE public.expense_categories (
 CREATE TABLE public.expenses (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID REFERENCES public.organizations(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   amount DECIMAL(12,2) NOT NULL CHECK (amount > 0),
   currency TEXT DEFAULT 'USD' NOT NULL,
   category_id UUID NOT NULL REFERENCES public.expense_categories(id),
   description TEXT NOT NULL,
   receipt_url TEXT,
   status public.expense_status DEFAULT 'pending_l1' NOT NULL,
-  current_approver_id UUID REFERENCES auth.users(id),
+  current_approver_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   version INTEGER NOT NULL DEFAULT 1,
   is_policy_exception BOOLEAN DEFAULT false NOT NULL,
   submitted_at TIMESTAMPTZ DEFAULT now(),
@@ -112,10 +112,10 @@ CREATE TABLE public.expenses (
 CREATE TABLE public.approval_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   expense_id UUID NOT NULL REFERENCES public.expenses(id) ON DELETE CASCADE,
-  approver_id UUID NOT NULL REFERENCES auth.users(id),
+  approver_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   action public.approval_action NOT NULL,
   level INT NOT NULL CHECK (level IN (1, 2)),
-  reassigned_to UUID REFERENCES auth.users(id),
+  reassigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL,
   comments TEXT,
   acted_at TIMESTAMPTZ DEFAULT now()
 );
@@ -126,7 +126,7 @@ CREATE TABLE public.approval_history (
 CREATE TABLE IF NOT EXISTS public.audit_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-  actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  actor_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   entity_type TEXT NOT NULL CHECK (entity_type IN ('expense','user','organization','category','approval')),
   entity_id TEXT NOT NULL,
   action TEXT NOT NULL CHECK (action IN ('created','updated','approved','rejected','reassigned','invited','deactivated','activated','exported','deleted')),
@@ -138,7 +138,7 @@ CREATE INDEX IF NOT EXISTS audit_log_org_idx ON public.audit_log(org_id, created
 CREATE TABLE IF NOT EXISTS public.exports_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
-  actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  actor_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
   export_type TEXT NOT NULL CHECK (export_type IN ('csv','tally_xml','audit_csv')),
   record_count INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT now()
@@ -162,7 +162,7 @@ AS $$
   )
 $$;
 
--- Check if user is manager of another user (via profiles.manager_id)
+-- Check if user is manager of another user (via users.manager_id)
 CREATE OR REPLACE FUNCTION public.is_manager_of(_manager_id UUID, _user_id UUID)
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -171,7 +171,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public.profiles
+    SELECT 1 FROM public.users
     WHERE id = _user_id AND manager_id = _manager_id
   )
 $$;
@@ -185,7 +185,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public.profiles
+    SELECT 1 FROM public.users
     WHERE manager_id = _user_id
   )
 $$;
@@ -198,7 +198,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT org_id FROM public.profiles WHERE id = _user_id
+  SELECT org_id FROM public.users WHERE id = _user_id
 $$;
 
 -- ============================================================
@@ -211,7 +211,7 @@ ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS ai_analysis JSONB;
 -- ============================================================
 ALTER TABLE public.organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.org_currencies ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expense_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
@@ -236,7 +236,7 @@ CREATE POLICY "Admin can update own org" ON public.organizations
 DROP POLICY IF EXISTS "Anyone can insert org during bootstrap" ON public.organizations;
 CREATE POLICY "bootstrap_insert" ON public.organizations FOR INSERT TO authenticated
   WITH CHECK (NOT EXISTS (
-    SELECT 1 FROM public.profiles WHERE id = auth.uid() AND org_id IS NOT NULL
+    SELECT 1 FROM public.users WHERE id = auth.uid() AND org_id IS NOT NULL
   ));
 
 -- Org currencies: org members can view, admin can manage
@@ -246,24 +246,26 @@ CREATE POLICY "Members can view currencies" ON public.org_currencies
 
 CREATE POLICY "Admin can manage currencies" ON public.org_currencies
   FOR ALL TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
+  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
 
 -- Profiles: org members can read, self can update, admin/hr can manage
-CREATE POLICY "Users can view org profiles" ON public.profiles
+CREATE POLICY "Users can view org users" ON public.users
   FOR SELECT TO authenticated
   USING (org_id = public.user_org_id(auth.uid()) OR id = auth.uid());
 
-CREATE POLICY "Users can update own profile" ON public.profiles
+CREATE POLICY "Users can update own profile" ON public.users
   FOR UPDATE TO authenticated
-  USING (id = auth.uid());
+  USING (id = auth.uid())
+  WITH CHECK (id = auth.uid() AND org_id = public.user_org_id(auth.uid()));
 
--- Profile insert/update: must be org-scoped
-DROP POLICY IF EXISTS "Admin/HR can insert profiles" ON public.profiles;
-DROP POLICY IF EXISTS "Admin/HR can update profiles" ON public.profiles;
-CREATE POLICY "admin_hr_insert" ON public.profiles FOR INSERT TO authenticated
+-- User insert/update: must be org-scoped
+DROP POLICY IF EXISTS "Admin/HR can insert users" ON public.users;
+DROP POLICY IF EXISTS "Admin/HR can update users" ON public.users;
+CREATE POLICY "admin_hr_insert" ON public.users FOR INSERT TO authenticated
   WITH CHECK (org_id = public.user_org_id(auth.uid())
     AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')));
-CREATE POLICY "admin_hr_update" ON public.profiles FOR UPDATE TO authenticated
+CREATE POLICY "admin_hr_update" ON public.users FOR UPDATE TO authenticated
   USING (org_id = public.user_org_id(auth.uid())
     AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')))
   WITH CHECK (org_id = public.user_org_id(auth.uid()));
@@ -272,17 +274,20 @@ CREATE POLICY "admin_hr_update" ON public.profiles FOR UPDATE TO authenticated
 DROP POLICY IF EXISTS "Users can view roles" ON public.user_roles;
 DROP POLICY IF EXISTS "Admin/HR can manage roles" ON public.user_roles;
 CREATE POLICY "org_select" ON public.user_roles FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.profiles
+  USING (EXISTS (SELECT 1 FROM public.users
     WHERE id = user_id AND org_id = public.user_org_id(auth.uid())));
 CREATE POLICY "admin_hr_all" ON public.user_roles FOR ALL TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.profiles
+  USING (EXISTS (SELECT 1 FROM public.users
+    WHERE id = user_id AND org_id = public.user_org_id(auth.uid()))
+    AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.users
     WHERE id = user_id AND org_id = public.user_org_id(auth.uid()))
     AND (public.has_role(auth.uid(),'admin') OR public.has_role(auth.uid(),'hr')));
 
 -- Expense categories: org members can read active, admin can CRUD
 CREATE POLICY "Members can view active categories" ON public.expense_categories
   FOR SELECT TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()));
+  USING (org_id = public.user_org_id(auth.uid()) AND is_active = true);
 
 CREATE POLICY "Admin can manage categories" ON public.expense_categories
   FOR INSERT TO authenticated
@@ -290,26 +295,47 @@ CREATE POLICY "Admin can manage categories" ON public.expense_categories
 
 CREATE POLICY "Admin can update categories" ON public.expense_categories
   FOR UPDATE TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
+  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
 
 CREATE POLICY "Admin can delete categories" ON public.expense_categories
   FOR DELETE TO authenticated
   USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'));
 
--- Expenses: role-based visibility (manager check via profiles.manager_id)
+-- Expenses: role-based visibility (manager check via users.manager_id)
 CREATE POLICY "Employee sees own expenses" ON public.expenses
   FOR SELECT TO authenticated
   USING (
     user_id = auth.uid()
     OR current_approver_id = auth.uid()
     OR public.is_manager_of(auth.uid(), user_id)
-    OR public.has_role(auth.uid(), 'admin')
-    OR public.has_role(auth.uid(), 'finance')
+    OR (
+      org_id = public.user_org_id(auth.uid())
+      AND (
+        public.has_role(auth.uid(), 'admin')
+        OR public.has_role(auth.uid(), 'finance')
+      )
+    )
   );
 
 CREATE POLICY "Employee can insert own expenses" ON public.expenses
   FOR INSERT TO authenticated
-  WITH CHECK (user_id = auth.uid());
+  WITH CHECK (
+    user_id = auth.uid()
+    AND org_id = public.user_org_id(auth.uid())
+    AND status = 'pending_l1'
+    AND category_id IN (
+      SELECT id FROM public.expense_categories
+      WHERE org_id = public.user_org_id(auth.uid()) AND is_active = true
+    )
+    AND (
+      current_approver_id IS NULL
+      OR current_approver_id IN (
+        SELECT id FROM public.users
+        WHERE org_id = public.user_org_id(auth.uid()) AND id <> auth.uid()
+      )
+    )
+  );
 
 -- Expense update: include finance, block self-approval
 DROP POLICY IF EXISTS "Employee can update own pending expenses" ON public.expenses;
@@ -321,11 +347,8 @@ CREATE POLICY "expense_update" ON public.expenses FOR UPDATE TO authenticated
     OR public.has_role(auth.uid(),'finance')
   )
   WITH CHECK (
-    NOT (user_id = auth.uid()
-      AND (public.has_role(auth.uid(),'finance') OR public.has_role(auth.uid(),'admin'))
-      AND status IN ('pending_l1','pending_l2'))
-    OR current_approver_id = auth.uid()
-    OR (user_id = auth.uid() AND status = 'pending_l1')
+    org_id = public.user_org_id(auth.uid())
+    AND NOT (user_id = auth.uid() AND status IN ('approved','rejected'))
   );
 
 CREATE POLICY "Employee can delete own pending expenses" ON public.expenses
@@ -334,25 +357,61 @@ CREATE POLICY "Employee can delete own pending expenses" ON public.expenses
 
 -- Approval history
 CREATE POLICY "View approval history" ON public.approval_history
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.expenses e
+      WHERE e.id = expense_id
+        AND (
+          e.user_id = auth.uid()
+          OR e.current_approver_id = auth.uid()
+          OR public.is_manager_of(auth.uid(), e.user_id)
+          OR (
+            e.org_id = public.user_org_id(auth.uid())
+            AND (
+              public.has_role(auth.uid(), 'admin')
+              OR public.has_role(auth.uid(), 'finance')
+            )
+          )
+        )
+    )
+  );
 
 CREATE POLICY "Approvers can insert history" ON public.approval_history
   FOR INSERT TO authenticated
-  WITH CHECK (approver_id = auth.uid());
+  WITH CHECK (
+    approver_id = auth.uid()
+    AND EXISTS (
+      SELECT 1 FROM public.expenses e
+      WHERE e.id = expense_id
+        AND e.org_id = public.user_org_id(auth.uid())
+        AND (
+          e.current_approver_id = auth.uid()
+          OR public.has_role(auth.uid(), 'admin')
+          OR public.has_role(auth.uid(), 'finance')
+          OR EXISTS (
+            SELECT 1
+            FROM public.users submitter
+            LEFT JOIN public.users l1_manager ON l1_manager.id = submitter.manager_id
+            WHERE submitter.id = e.user_id
+              AND (
+                submitter.manager_id = auth.uid()
+                OR l1_manager.manager_id = auth.uid()
+              )
+          )
+        )
+    )
+  );
 
 -- ============================================================
 -- 12. Storage bucket for receipts
 -- ============================================================
-INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', true)
-ON CONFLICT (id) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public) VALUES ('receipts', 'receipts', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
 
 CREATE POLICY "Users can upload receipts" ON storage.objects
   FOR INSERT TO authenticated
   WITH CHECK (bucket_id = 'receipts' AND (storage.foldername(name))[1] = auth.uid()::text);
-
-CREATE POLICY "Anyone can view receipts" ON storage.objects
-  FOR SELECT TO authenticated
-  USING (bucket_id = 'receipts');
 
 -- Storage: restrict receipts to owner only
 DROP POLICY IF EXISTS "Anyone can view receipts" ON storage.objects;
@@ -411,7 +470,7 @@ END;
 $$;
 
 -- ============================================================
--- 14. Auto-create profile on signup trigger
+-- 14. Auto-create user profile on signup trigger
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
@@ -420,7 +479,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, name, email, first_name, last_name)
+  INSERT INTO public.users (id, name, email, first_name, last_name)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', NEW.email),
@@ -468,7 +527,7 @@ BEGIN
   RETURNING id INTO _org_id;
 
   -- Link user to org
-  UPDATE public.profiles SET org_id = _org_id WHERE id = _uid;
+  UPDATE public.users SET org_id = _org_id WHERE id = _uid;
 
   -- Promote to admin (remove default employee, add admin)
   DELETE FROM public.user_roles WHERE user_id = _uid;
@@ -545,10 +604,9 @@ CREATE TABLE public.subscriptions (
 ALTER TABLE public.subscriptions ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Members can view own subscription" ON public.subscriptions;
+DROP POLICY IF EXISTS "admin_all" ON public.subscriptions;
 CREATE POLICY "org_select" ON public.subscriptions FOR SELECT TO authenticated
   USING (org_id = public.user_org_id(auth.uid()));
-CREATE POLICY "admin_all" ON public.subscriptions FOR ALL TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
 
 -- ============================================================
 -- 18. Plan limits table (reference data)
@@ -579,7 +637,7 @@ ON CONFLICT DO NOTHING;
 -- ============================================================
 CREATE TABLE public.notification_preferences (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE UNIQUE,
   on_expense_submitted BOOLEAN NOT NULL DEFAULT true,
   on_expense_approved BOOLEAN NOT NULL DEFAULT true,
   on_expense_rejected BOOLEAN NOT NULL DEFAULT true,
@@ -691,6 +749,39 @@ DROP TRIGGER IF EXISTS set_expense_org_id ON public.expenses;
 CREATE TRIGGER set_expense_org_id BEFORE INSERT ON public.expenses
   FOR EACH ROW EXECUTE FUNCTION public.set_expense_org_id();
 
+CREATE OR REPLACE FUNCTION public.set_expense_policy_exception()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _monthly_limit DECIMAL(12,2);
+  _per_expense_limit DECIMAL(12,2);
+  _month_spend DECIMAL(12,2);
+BEGIN
+  SELECT monthly_limit, per_expense_limit
+  INTO _monthly_limit, _per_expense_limit
+  FROM public.category_limits
+  WHERE org_id = NEW.org_id AND category_id = NEW.category_id;
+
+  SELECT COALESCE(SUM(amount), 0)
+  INTO _month_spend
+  FROM public.expenses
+  WHERE org_id = NEW.org_id
+    AND category_id = NEW.category_id
+    AND id <> NEW.id
+    AND status IN ('pending_l1', 'pending_l2', 'approved')
+    AND submitted_at >= date_trunc('month', NEW.submitted_at)
+    AND submitted_at < date_trunc('month', NEW.submitted_at) + interval '1 month';
+
+  NEW.is_policy_exception :=
+    (_per_expense_limit IS NOT NULL AND NEW.amount > _per_expense_limit)
+    OR (_monthly_limit IS NOT NULL AND (_month_spend + NEW.amount) > _monthly_limit);
+
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS zz_set_expense_policy_exception ON public.expenses;
+CREATE TRIGGER zz_set_expense_policy_exception BEFORE INSERT OR UPDATE OF amount, category_id, status, submitted_at ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.set_expense_policy_exception();
+
 CREATE OR REPLACE FUNCTION public.increment_expense_version()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -702,6 +793,43 @@ DROP TRIGGER IF EXISTS on_expense_version_bump ON public.expenses;
 CREATE TRIGGER on_expense_version_bump BEFORE UPDATE ON public.expenses
   FOR EACH ROW EXECUTE FUNCTION public.increment_expense_version();
 
+CREATE OR REPLACE FUNCTION public.enforce_expense_status_transition()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.status IN ('pending_l1', 'pending_l2') AND NEW.current_approver_id IS NULL THEN
+    RAISE EXCEPTION 'Pending expenses require a current approver';
+  END IF;
+
+  IF NEW.current_approver_id IS NOT NULL AND NEW.current_approver_id = NEW.user_id THEN
+    RAISE EXCEPTION 'Submitter cannot be their own approver';
+  END IF;
+
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'pending_l1' THEN
+      RAISE EXCEPTION 'New expenses must start in pending_l1';
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = NEW.status THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'pending_l1' AND NEW.status IN ('pending_l2', 'rejected') THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'pending_l2' AND NEW.status IN ('approved', 'rejected') THEN
+    RETURN NEW;
+  END IF;
+
+  RAISE EXCEPTION 'Invalid expense status transition from % to %', OLD.status, NEW.status;
+END;
+$$;
+DROP TRIGGER IF EXISTS enforce_expense_status_transition ON public.expenses;
+CREATE TRIGGER enforce_expense_status_transition BEFORE INSERT OR UPDATE ON public.expenses
+  FOR EACH ROW EXECUTE FUNCTION public.enforce_expense_status_transition();
+
 CREATE OR REPLACE FUNCTION public.log_expense_change()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -711,7 +839,7 @@ BEGIN
       jsonb_build_object('amount',NEW.amount,'currency',NEW.currency,'status',NEW.status));
   ELSIF TG_OP = 'UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN
     INSERT INTO public.audit_log(org_id,actor_id,entity_type,entity_id,action,changes)
-    VALUES(NEW.org_id,COALESCE(NEW.current_approver_id,NEW.user_id),
+    VALUES(NEW.org_id,COALESCE(auth.uid(),NEW.current_approver_id,NEW.user_id),
       'expense',NEW.id::TEXT,
       CASE NEW.status WHEN 'approved' THEN 'approved'
         WHEN 'rejected' THEN 'rejected' ELSE 'updated' END,
@@ -737,6 +865,108 @@ DROP TRIGGER IF EXISTS on_export ON public.exports_log;
 CREATE TRIGGER on_export AFTER INSERT ON public.exports_log
   FOR EACH ROW EXECUTE FUNCTION public.log_export();
 
+CREATE OR REPLACE FUNCTION public.log_user_change()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _action TEXT;
+  _org_id UUID;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.org_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+    _action := 'invited';
+    _org_id := NEW.org_id;
+  ELSIF TG_OP = 'UPDATE' THEN
+    IF OLD.org_id IS NULL AND NEW.org_id IS NOT NULL THEN
+      _action := 'invited';
+    ELSIF OLD.status IS DISTINCT FROM NEW.status AND NEW.status = 'inactive' THEN
+      _action := 'deactivated';
+    ELSIF OLD.status IS DISTINCT FROM NEW.status AND NEW.status = 'active' THEN
+      _action := 'activated';
+    ELSE
+      _action := 'updated';
+    END IF;
+    _org_id := COALESCE(NEW.org_id, OLD.org_id);
+    IF _org_id IS NULL THEN
+      RETURN NEW;
+    END IF;
+  ELSE
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.audit_log(org_id, actor_id, entity_type, entity_id, action, changes)
+  VALUES(
+    _org_id,
+    auth.uid(),
+    'user',
+    NEW.id::TEXT,
+    _action,
+    jsonb_build_object('email', NEW.email, 'status', NEW.status, 'manager_id', NEW.manager_id)
+  );
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_user_change ON public.users;
+CREATE TRIGGER on_user_change AFTER INSERT OR UPDATE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.log_user_change();
+
+CREATE OR REPLACE FUNCTION public.log_category_change()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _row public.expense_categories%ROWTYPE;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    _row := OLD;
+  ELSE
+    _row := NEW;
+  END IF;
+
+  INSERT INTO public.audit_log(org_id, actor_id, entity_type, entity_id, action, changes)
+  VALUES(
+    _row.org_id,
+    auth.uid(),
+    'category',
+    _row.id::TEXT,
+    CASE TG_OP WHEN 'INSERT' THEN 'created' WHEN 'DELETE' THEN 'deleted' ELSE 'updated' END,
+    jsonb_build_object('name', _row.name, 'is_active', _row.is_active, 'gl_code', _row.gl_code)
+  );
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_category_change ON public.expense_categories;
+CREATE TRIGGER on_category_change AFTER INSERT OR UPDATE OR DELETE ON public.expense_categories
+  FOR EACH ROW EXECUTE FUNCTION public.log_category_change();
+
+CREATE OR REPLACE FUNCTION public.log_approval_history_change()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _org_id UUID;
+BEGIN
+  SELECT org_id INTO _org_id FROM public.expenses WHERE id = NEW.expense_id;
+  IF _org_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.audit_log(org_id, actor_id, entity_type, entity_id, action, changes)
+  VALUES(
+    _org_id,
+    NEW.approver_id,
+    'approval',
+    NEW.expense_id::TEXT,
+    NEW.action::TEXT,
+    jsonb_build_object('level', NEW.level, 'reassigned_to', NEW.reassigned_to, 'comments', NEW.comments)
+  );
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS on_approval_history_change ON public.approval_history;
+CREATE TRIGGER on_approval_history_change AFTER INSERT ON public.approval_history
+  FOR EACH ROW EXECUTE FUNCTION public.log_approval_history_change();
+
 -- ============================================================
 -- 21. Category spend limits
 -- ============================================================
@@ -759,7 +989,8 @@ DROP POLICY IF EXISTS "Admin can delete category limits" ON public.category_limi
 CREATE POLICY "org_select" ON public.category_limits FOR SELECT TO authenticated
   USING (org_id = public.user_org_id(auth.uid()));
 CREATE POLICY "admin_all" ON public.category_limits FOR ALL TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
+  USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'))
+  WITH CHECK (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
 
 -- ============================================================
 -- 22. Policy exception flag on expenses
@@ -796,7 +1027,12 @@ $$;
 -- 24. Org-scoped expense count for plan limits
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.org_expense_count_this_month(_org_id UUID)
-RETURNS BIGINT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+RETURNS BIGINT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT COUNT(*) FROM public.expenses e
   JOIN public.users u ON u.id = e.user_id
   WHERE u.org_id = _org_id
@@ -814,7 +1050,12 @@ ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS gst_details JSONB;
 
 -- Helper: has_any_role
 CREATE OR REPLACE FUNCTION public.has_any_role(_user_id UUID, _roles TEXT[])
-RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.user_roles 
     WHERE user_id = _user_id AND role::text = ANY(_roles)
@@ -823,7 +1064,12 @@ $$;
 
 -- Helper: get all user IDs in the same org as the current user
 CREATE OR REPLACE FUNCTION public.org_user_ids(_org_id UUID)
-RETURNS SETOF UUID LANGUAGE sql STABLE SECURITY DEFINER AS $$
+RETURNS SETOF UUID
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT id FROM public.users WHERE org_id = _org_id;
 $$;
 

@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 
     const token = authHeader.replace("Bearer ", "");
     const action = String(body.action ?? "") as Action;
-    const targetUserId = String(body.user_id ?? "").trim();
+    const targetUserId = String(body.target_user_id ?? "").trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const redirectTo = body.redirect_to ? String(body.redirect_to) : undefined;
 
@@ -78,9 +78,9 @@ Deno.serve(async (req) => {
       return json(403, { error: "Only admin users can manage password resets or delete users" });
     }
 
-    const { data: targetProfile } = await admin.from('profiles')
+    const { data: targetProfile } = await admin.from('users')
       .select('org_id').eq('id', targetUserId).single();
-    const { data: callerProfile } = await admin.from('profiles')
+    const { data: callerProfile } = await admin.from('users')
       .select('org_id').eq('id', callerId).single();
     if (!targetProfile || targetProfile.org_id !== callerProfile?.org_id)
       return json(403, { error: 'Target user not in your organization' });
@@ -88,6 +88,14 @@ Deno.serve(async (req) => {
     if (action === "reset_password") {
       if (!email || !email.includes("@")) {
         return json(400, { error: "Valid email is required" });
+      }
+      const allowedRedirectOrigins = [
+        Deno.env.get("SITE_URL"),
+        "http://localhost:5173",
+        "http://localhost:3000",
+      ];
+      if (redirectTo && !allowedRedirectOrigins.some((origin) => origin && redirectTo.startsWith(origin))) {
+        return json(400, { error: "Invalid redirect_to" });
       }
 
       const { error } = await admin.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);

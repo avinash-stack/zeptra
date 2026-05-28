@@ -229,7 +229,7 @@ const SubmitExpense: React.FC = () => {
         body: { 
           file_name: file.name, 
           file_type: file.type,
-          user_id: user.id 
+          file_size: file.size,
         }
       });
       if (error || !data?.upload_url) return null;
@@ -242,7 +242,7 @@ const SubmitExpense: React.FC = () => {
       });
       if (!uploadRes.ok) return null;
       
-      return data.public_url;
+      return data.receipt_key || null;
     } catch {
       return null;
     }
@@ -300,7 +300,7 @@ const SubmitExpense: React.FC = () => {
       if (!url) return;
       setReceiptUrl(url);
       const { data, error } = await supabase.functions.invoke('ocr-receipt', {
-        body: { receipt_url: url },
+        body: { receipt_key: url },
       });
       if (!error && data) {
         if (data.amount && !amount) setValue('amount', String(data.amount));
@@ -354,6 +354,9 @@ const SubmitExpense: React.FC = () => {
         .select('manager_id')
         .eq('id', user.id)
         .single();
+      if (!profileData?.manager_id) {
+        throw new Error('No approver is assigned to your profile. Ask HR or an admin to set your manager before submitting an expense.');
+      }
 
       const { error } = await supabase.from('expenses').insert({
         user_id: user.id,
@@ -363,7 +366,7 @@ const SubmitExpense: React.FC = () => {
         description: data.description,
         receipt_url: finalReceiptUrl,
         status: 'pending_l1',
-        current_approver_id: profileData?.manager_id || null,
+        current_approver_id: profileData.manager_id,
         submitted_at: new Date(`${data.expenseDate}T12:00:00`).toISOString(),
         is_policy_exception: isPolicyException,
         gst_details: data.gstNumber || cgst || sgst || igst ? {
@@ -769,7 +772,7 @@ const SubmitExpense: React.FC = () => {
                 {hsnCodes.length > 0 && (
                   <div className="space-y-2">
                     <Label>HSN Codes</Label>
-                    <div className="border rounded-lg overflow-hidden">
+                    <div className="border rounded-lg overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>

@@ -65,7 +65,8 @@ export function usePlanLimit(): PlanLimitState {
       const { count: uCount } = await supabase
         .from('users')
         .select('id', { count: 'exact', head: true })
-        .eq('org_id', orgId);
+        .eq('org_id', orgId)
+        .eq('is_active', true);
 
       setUserCount(uCount || 0);
 
@@ -86,13 +87,13 @@ export function usePlanLimit(): PlanLimitState {
 
   const plan: PlanType = subscription?.plan || 'free';
 
-  // -1 means unlimited
+  // null means unlimited
   const userLimitReached = limits
-    ? limits.max_users !== -1 && userCount >= limits.max_users
+    ? limits.max_users !== null && userCount >= limits.max_users
     : false;
 
   const expenseLimitReached = limits
-    ? limits.max_expenses_per_month !== -1 && expenseCount >= limits.max_expenses_per_month
+    ? limits.max_expenses_per_month !== null && expenseCount >= limits.max_expenses_per_month
     : false;
 
   const usageExceeded = userLimitReached || expenseLimitReached;

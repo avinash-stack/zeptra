@@ -127,7 +127,10 @@ const UserManagement: React.FC = () => {
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
     setActionUserId(userId);
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    const { error } = await supabase.from('users').update({ status: newStatus }).eq('id', userId);
+    const { error } = await supabase
+      .from('users')
+      .update({ status: newStatus, is_active: newStatus === 'active' })
+      .eq('id', userId);
     if (error) {
       toast.error('Failed to update user status');
     } else {
@@ -153,7 +156,7 @@ const UserManagement: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('manage-user', {
         body: {
           action: 'reset_password',
-          user_id: user.id,
+          target_user_id: user.id,
           email: user.email,
           redirect_to: redirectTo,
         },
@@ -184,7 +187,7 @@ const UserManagement: React.FC = () => {
       const { data, error } = await supabase.functions.invoke('manage-user', {
         body: {
           action: 'delete',
-          user_id: deleteUser.id,
+          target_user_id: deleteUser.id,
         },
       });
 

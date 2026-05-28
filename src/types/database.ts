@@ -44,6 +44,7 @@ export interface Profile {
   manager_id: string | null;
   tag: string | null;
   status: ProfileStatus;
+  is_active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -121,8 +122,8 @@ export interface Subscription {
 
 export interface PlanLimit {
   plan: PlanType;
-  max_users: number;
-  max_expenses_per_month: number;
+  max_users: number | null;
+  max_expenses_per_month: number | null;
   has_analytics: boolean;
   has_api: boolean;
 }

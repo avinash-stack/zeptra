@@ -31,11 +31,11 @@ Deno.serve(async (req) => {
     const anthropicKey = Deno.env.get("ANTHROPIC_API_KEY");
 
     if (!supabaseUrl || !serviceRoleKey) {
-      return json(200, defaultAnalysis);
+      return json(500, { error: "Missing Supabase configuration" });
     }
     if (!anthropicKey) {
       console.error("ANTHROPIC_API_KEY not configured");
-      return json(200, defaultAnalysis);
+      return json(500, { error: "AI provider is not configured" });
     }
 
     const body = await req.json().catch(() => null);
@@ -49,6 +49,13 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
+    const token = authHeader.replace("Bearer ", "");
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !authData.user) {
+      return json(401, { error: "Invalid auth token" });
+    }
+    const callerId = authData.user.id;
+
     // 1. Fetch target expense
     const { data: expense } = await supabase
       .from("expenses")
@@ -57,6 +64,31 @@ Deno.serve(async (req) => {
       .single();
 
     if (!expense) return json(404, { error: "Expense not found" });
+
+    const orgId = expense.org_id || expense.users?.org_id;
+    if (!orgId) {
+      return json(500, { error: "Expense is missing organization scope" });
+    }
+
+    const [{ data: callerProfile }, { data: callerRoles }] = await Promise.all([
+      supabase.from("users").select("org_id").eq("id", callerId).single(),
+      supabase.from("user_roles").select("role").eq("user_id", callerId),
+    ]);
+    const roleNames = (callerRoles || []).map((r: { role: string }) => r.role);
+    const isOrgPrivileged = callerProfile?.org_id === orgId &&
+      (roleNames.includes("admin") || roleNames.includes("finance"));
+    const isSubmitter = expense.user_id === callerId;
+    const isCurrentApprover = expense.current_approver_id === callerId;
+    const { data: directReport } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", expense.user_id)
+      .eq("manager_id", callerId)
+      .maybeSingle();
+
+    if (!isSubmitter && !isCurrentApprover && !isOrgPrivileged && !directReport) {
+      return json(403, { error: "You are not allowed to analyze this expense" });
+    }
 
     // 2. Submitter's last 10 expenses in same category
     const { data: history } = await supabase
@@ -76,24 +108,16 @@ Deno.serve(async (req) => {
     const personalMax = amounts.length > 0 ? Math.max(...amounts) : null;
 
     // 3. Org average for this category (last 90 days)
-    // expenses has no org_id — get org users first, then query their expenses
-    const { data: orgUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("org_id", expense.users.org_id);
-    const orgUserIds = (orgUsers || []).map((u: any) => u.id);
-
-    const { data: orgData } = orgUserIds.length > 0
-      ? await supabase
-        .from("expenses")
-        .select("amount")
-        .in("user_id", orgUserIds)
-        .eq("category_id", expense.category_id)
-        .gte(
-          "submitted_at",
-          new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
-        )
-      : { data: [] };
+    const { data: orgData } = await supabase
+      .from("expenses")
+      .select("amount")
+      .eq("org_id", orgId)
+      .eq("category_id", expense.category_id)
+      .gte(
+        "submitted_at",
+        new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+      )
+      .limit(500);
 
     const orgAmounts = (orgData || []).map((e: any) => Number(e.amount));
     const orgAvg =
@@ -167,7 +191,7 @@ Flags examples (use only what actually applies):
 
     if (!claudeRes.ok) {
       console.error("Anthropic API error:", await claudeRes.text());
-      return json(200, defaultAnalysis);
+      return json(502, { error: "AI provider failed" });
     }
 
     const claudeData = await claudeRes.json();
@@ -196,12 +220,13 @@ Flags examples (use only what actually applies):
     await supabase
       .from("expenses")
       .update({ ai_analysis: analysis })
-      .eq("id", expense_id);
+      .eq("id", expense_id)
+      .eq("org_id", orgId);
 
     return json(200, analysis);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("analyze-expense error:", message);
-    return json(200, defaultAnalysis);
+    return json(500, { error: "Failed to analyze expense" });
   }
 });

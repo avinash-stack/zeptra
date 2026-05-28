@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receipt, Plus, Download, AlertTriangle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { logExport } from '@/lib/auditLogger';
 import type { OrgCurrency } from '@/types/database';
 
 const COLORS = ['hsl(262, 83%, 58%)', 'hsl(38, 92%, 50%)', 'hsl(142, 71%, 45%)', 'hsl(0, 84%, 60%)'];
@@ -54,9 +55,9 @@ const Dashboard: React.FC = () => {
     try {
       let query;
       if (hasAnyRole(['admin', 'finance'])) {
-        query = supabase.from('expenses').select('*, expense_categories(name)');
+        query = supabase.from('expenses').select('*, expense_categories(name)').limit(1000);
       } else {
-        query = supabase.from('expenses').select('*');
+        query = supabase.from('expenses').select('*').limit(1000);
         if (isManager) {
           query = query.or(`user_id.eq.${user.id},current_approver_id.eq.${user.id}`);
         } else {
@@ -163,6 +164,14 @@ const Dashboard: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${allExpenses.length} expenses`);
+    if (user && profile?.org_id) {
+      logExport({
+        org_id: profile.org_id,
+        actor_id: user.id,
+        export_type: 'csv',
+        record_count: allExpenses.length,
+      });
+    }
   };
 
   return (
@@ -338,26 +347,28 @@ const Dashboard: React.FC = () => {
                 </CardHeader>
                 <CardContent>
                   {topSpenders.length > 0 ? (
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Employee</TableHead>
-                          <TableHead className="text-right">Total spent</TableHead>
-                          <TableHead className="text-right">Expenses</TableHead>
-                          <TableHead className="text-right">Avg per expense</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {topSpenders.map((s, i) => (
-                          <TableRow key={i}>
-                            <TableCell className="font-medium">{s.name}</TableCell>
-                            <TableCell className="text-right font-medium">{defaultCurrSymbol}{s.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
-                            <TableCell className="text-right text-muted-foreground">{s.count}</TableCell>
-                            <TableCell className="text-right text-muted-foreground">{defaultCurrSymbol}{s.avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Employee</TableHead>
+                            <TableHead className="text-right">Total spent</TableHead>
+                            <TableHead className="text-right">Expenses</TableHead>
+                            <TableHead className="text-right">Avg per expense</TableHead>
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {topSpenders.map((s, i) => (
+                            <TableRow key={i}>
+                              <TableCell className="font-medium">{s.name}</TableCell>
+                              <TableCell className="text-right font-medium">{defaultCurrSymbol}{s.amount.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                              <TableCell className="text-right text-muted-foreground">{s.count}</TableCell>
+                              <TableCell className="text-right text-muted-foreground">{defaultCurrSymbol}{s.avg.toLocaleString(undefined, { maximumFractionDigits: 2 })}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center text-muted-foreground py-8">
                       No spender data yet

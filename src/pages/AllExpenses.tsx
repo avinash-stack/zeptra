@@ -37,7 +37,8 @@ const AllExpenses: React.FC = () => {
     let query = supabase
       .from('expenses')
       .select('*, expense_categories(name, gl_code)')
-      .order('submitted_at', { ascending: false });
+      .order('submitted_at', { ascending: false })
+      .range(0, 99);
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
 
@@ -68,12 +69,29 @@ const AllExpenses: React.FC = () => {
   );
 
   const handleFinanceApprove = async (expense: ExpenseWithDetails) => {
+    if (expense.user_id === user?.id) {
+      toast.error('You cannot approve your own expense');
+      return;
+    }
+    if (expense.status !== 'pending_l2') {
+      toast.error('Final approval requires level 1 approval first');
+      return;
+    }
     try {
-      await supabase.from('expenses').update({
+      const { data: updatedExpense, error: updateError } = await supabase.from('expenses').update({
         status: 'approved',
         current_approver_id: null,
         decided_at: new Date().toISOString(),
-      }).eq('id', expense.id);
+      })
+        .eq('id', expense.id)
+        .eq('version', expense.version)
+        .eq('status', expense.status)
+        .select('id')
+        .single();
+
+      if (updateError || !updatedExpense) {
+        throw new Error(updateError?.message || 'Expense was changed by another approver. Refresh and try again.');
+      }
 
       await supabase.from('approval_history').insert({
         expense_id: expense.id,
@@ -90,12 +108,25 @@ const AllExpenses: React.FC = () => {
 
   const handleFinanceReject = async () => {
     if (!rejectExpense) return;
+    if (rejectExpense.user_id === user?.id) {
+      toast.error('You cannot reject your own expense');
+      return;
+    }
     try {
-      await supabase.from('expenses').update({
+      const { data: updatedExpense, error: updateError } = await supabase.from('expenses').update({
         status: 'rejected',
         current_approver_id: null,
         decided_at: new Date().toISOString(),
-      }).eq('id', rejectExpense.id);
+      })
+        .eq('id', rejectExpense.id)
+        .eq('version', rejectExpense.version)
+        .eq('status', rejectExpense.status)
+        .select('id')
+        .single();
+
+      if (updateError || !updatedExpense) {
+        throw new Error(updateError?.message || 'Expense was changed by another approver. Refresh and try again.');
+      }
 
       await supabase.from('approval_history').insert({
         expense_id: rejectExpense.id,

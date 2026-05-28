@@ -43,6 +43,7 @@ function buildEmailHtml(params: {
   const { orgName, event, employeeName, amount, currency, category, description, comments, approverName } = params;
   const orgNameEsc = esc(orgName);
   const employeeNameEsc = esc(employeeName);
+  const categoryEsc = esc(category);
   const descriptionEsc = esc(description);
   const commentsEsc = esc(comments || "");
   const approverNameEsc = esc(approverName || "");
@@ -56,14 +57,14 @@ function buildEmailHtml(params: {
 
   switch (event) {
     case "submitted":
-      subject = `[${orgNameEsc}] Action required: ${employeeNameEsc} submitted ${formattedAmount} for ${category}`;
+      subject = `[${orgNameEsc}] Action required: ${employeeNameEsc} submitted ${formattedAmount} for ${categoryEsc}`;
       heading = "New Expense Awaiting Your Approval";
       accentColor = "#6366f1";
       body = `
         <p><strong>${employeeNameEsc}</strong> has submitted an expense that requires your review.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${categoryEsc}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
         <p style="color:#6b7280;font-size:14px;">Log in to Zeptra to approve or reject this expense.</p>
@@ -78,7 +79,7 @@ function buildEmailHtml(params: {
         <p>Great news! Your expense has been approved${approverName ? ` by <strong>${approverNameEsc}</strong>` : ""}.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${categoryEsc}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
       `;
@@ -92,7 +93,7 @@ function buildEmailHtml(params: {
         <p>Unfortunately, your expense has been rejected${approverName ? ` by <strong>${approverNameEsc}</strong>` : ""}.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${categoryEsc}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
         ${comments ? `
@@ -114,7 +115,7 @@ function buildEmailHtml(params: {
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">
           <tr><td style="padding:8px 12px;color:#6b7280;width:120px;">Submitted by</td><td style="padding:8px 12px;font-weight:600;">${employeeNameEsc}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Amount</td><td style="padding:8px 12px;font-weight:600;">${formattedAmount} ${currency}</td></tr>
-          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${category}</td></tr>
+          <tr><td style="padding:8px 12px;color:#6b7280;">Category</td><td style="padding:8px 12px;">${categoryEsc}</td></tr>
           <tr><td style="padding:8px 12px;color:#6b7280;">Description</td><td style="padding:8px 12px;">${descriptionEsc}</td></tr>
         </table>
         ${comments ? `
@@ -172,6 +173,12 @@ Deno.serve(async (req) => {
     }
     if (!resendApiKey || !fromEmail) {
       return json(500, { error: "Missing RESEND_API_KEY or RESEND_FROM_EMAIL" });
+    }
+
+    const authHeader = req.headers.get("Authorization");
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.replace("Bearer ", "") : "";
+    if (!token || token !== serviceRoleKey) {
+      return json(401, { error: "Invalid internal authorization token" });
     }
 
     const body = await req.json().catch(() => null);
@@ -341,7 +348,7 @@ Deno.serve(async (req) => {
       return json(500, { error: resendData.message || "Failed to send email" });
     }
 
-    return json(200, { success: true, email_id: resendData.id, to: recipient.email });
+    return json(200, { success: true, email_id: resendData.id });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("send-notification error:", message);

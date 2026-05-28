@@ -9,6 +9,11 @@ const corsHeaders = {
 type AppRole = "admin" | "employee" | "hr" | "finance";
 
 const validRoles = new Set<AppRole>(["admin", "employee", "hr", "finance"]);
+const esc = (value: string) => value
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;");
 
 const json = (status: number, payload: Record<string, unknown>) =>
   new Response(JSON.stringify(payload), {
@@ -94,10 +99,11 @@ Deno.serve(async (req) => {
     const { data: sub } = await admin.from('subscriptions')
       .select('plan').eq('org_id', callerProfile.org_id).single();
     const plan = sub?.plan || 'free';
-    const limits: Record<string,number|null> = {free:5, pro:50, enterprise:null};
-    const limit = limits[plan];
+    const { data: planLimit } = await admin.from('plan_limits')
+      .select('max_users').eq('plan', plan).single();
+    const limit = planLimit?.max_users ?? null;
     if (limit !== null) {
-      const { count } = await admin.from('profiles')
+      const { count } = await admin.from('users')
         .select('id', { count:'exact', head:true })
         .eq('org_id', callerProfile.org_id).eq('is_active', true);
       if ((count||0) >= limit)
@@ -106,7 +112,7 @@ Deno.serve(async (req) => {
 
     // manager_id org check
     if (managerId) {
-      const { data: mgr } = await admin.from('profiles')
+      const { data: mgr } = await admin.from('users')
         .select('org_id').eq('id', managerId).single();
       if (!mgr || mgr.org_id !== callerProfile.org_id)
         return json(400, { error: 'Invalid manager_id' });
@@ -159,6 +165,38 @@ Deno.serve(async (req) => {
       return json(500, { error: "Invite succeeded but failed to generate action link" });
     }
 
+    const { error: profileError } = await admin.from("users").upsert(
+      {
+        id: invitedUserId,
+        org_id: callerProfile.org_id,
+        name,
+        email,
+        manager_id: managerId,
+        tag,
+        status: "active",
+        is_active: true,
+      },
+      { onConflict: "id" },
+    );
+
+    if (profileError) {
+      return json(500, { error: profileError.message });
+    }
+
+    const { error: deleteRoleError } = await admin.from("user_roles").delete().eq("user_id", invitedUserId);
+    if (deleteRoleError) {
+      return json(500, { error: deleteRoleError.message });
+    }
+
+    const { error: insertRoleError } = await admin.from("user_roles").insert({
+      user_id: invitedUserId,
+      role,
+    });
+
+    if (insertRoleError) {
+      return json(500, { error: insertRoleError.message });
+    }
+
     // Send custom Resend email
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const fromEmail = Deno.env.get("RESEND_FROM_EMAIL");
@@ -200,11 +238,11 @@ Deno.serve(async (req) => {
         <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Zeptra</h1>
       </div>
       <div style="padding:32px;">
-        <h2 style="margin:0 0 16px;color:#111827;font-size:20px;">Hi ${name},</h2>
+        <h2 style="margin:0 0 16px;color:#111827;font-size:20px;">Hi ${esc(name)},</h2>
         <p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.5;">
-          <strong>${inviterName}</strong> has invited you to join <strong>${orgName}</strong> as a <strong>${role}</strong> on Zeptra.
+          <strong>${esc(inviterName)}</strong> has invited you to join <strong>${esc(orgName)}</strong> as a <strong>${esc(role)}</strong> on Zeptra.
         </p>
-        <a href="${actionLink}" style="display:inline-block;background:#6366f1;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation & Set Password</a>
+        <a href="${esc(actionLink)}" style="display:inline-block;background:#6366f1;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation & Set Password</a>
         <p style="margin:24px 0 0;color:#9ca3af;font-size:14px;">This link expires in 24 hours.</p>
       </div>
       <div style="padding:16px 32px;border-top:1px solid #e5e7eb;background:#f9fafb;">
@@ -233,38 +271,7 @@ Deno.serve(async (req) => {
     if (!resendRes.ok) {
       const resendErr = await resendRes.json();
       console.error("Failed to send invite email via Resend:", resendErr);
-      return json(500, { error: "Created user but failed to send invitation email." });
-    }
-
-    const { error: profileError } = await admin.from("users").upsert(
-      {
-        id: invitedUserId,
-        org_id: callerProfile.org_id,
-        name,
-        email,
-        manager_id: managerId,
-        tag,
-        status: "active",
-      },
-      { onConflict: "id" },
-    );
-
-    if (profileError) {
-      return json(500, { error: profileError.message });
-    }
-
-    const { error: deleteRoleError } = await admin.from("user_roles").delete().eq("user_id", invitedUserId);
-    if (deleteRoleError) {
-      return json(500, { error: deleteRoleError.message });
-    }
-
-    const { error: insertRoleError } = await admin.from("user_roles").insert({
-      user_id: invitedUserId,
-      role,
-    });
-
-    if (insertRoleError) {
-      return json(500, { error: insertRoleError.message });
+      return json(502, { error: "User was created, but invitation email failed to send." });
     }
 
     return json(200, { success: true, user_id: invitedUserId, email, role });

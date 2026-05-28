@@ -113,7 +113,8 @@ const Approvals: React.FC = () => {
       .from('users')
       .select('*')
       .eq('status', 'active')
-      .neq('id', user?.id || '');
+      .neq('id', user?.id || '')
+      .limit(200);
     setReassignCandidates((profiles as Profile[]) || []);
   };
 
@@ -123,28 +124,28 @@ const Approvals: React.FC = () => {
       return;
     }
     try {
-      const isFinance = hasAnyRole(['finance']);
-
       let newStatus: string;
       let newApprover: string | null = null;
 
-      if (isFinance) {
-        newStatus = 'approved';
-      } else if (expense.status === 'pending_l1') {
+      if (expense.status === 'pending_l1') {
         const { data: managerProfile } = await supabase
           .from('users')
           .select('manager_id')
           .eq('id', user!.id)
           .single();
 
-        if (managerProfile?.manager_id) {
-          newStatus = 'pending_l2';
-          newApprover = managerProfile.manager_id;
-        } else {
-          newStatus = 'approved';
+        if (!managerProfile?.manager_id) {
+          toast.error('No level 2 approver is assigned to your profile');
+          return;
         }
-      } else {
+
+        newStatus = 'pending_l2';
+        newApprover = managerProfile.manager_id;
+      } else if (expense.status === 'pending_l2') {
         newStatus = 'approved';
+      } else {
+        toast.error('This expense is not pending approval');
+        return;
       }
 
       // Optimistic lock: only update if version and status match what we loaded
@@ -175,7 +176,7 @@ const Approvals: React.FC = () => {
         expense_id: expense.id,
         approver_id: user!.id,
         action: 'approved',
-        level: isFinance ? 2 : (expense.status === 'pending_l1' ? 1 : 2),
+        level: expense.status === 'pending_l1' ? 1 : 2,
         comments,
       });
 
@@ -318,7 +319,13 @@ const Approvals: React.FC = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.length === 0 ? (
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                      Loading approvals...
+                    </TableCell>
+                  </TableRow>
+                ) : filtered.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
                       No pending approvals
