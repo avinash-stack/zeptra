@@ -10,10 +10,29 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- NOTE: 'manager' role removed. Manager access is determined by
 -- the users.manager_id relationship (anyone tagged as a
 -- manager_id on another user's profile gets approval access).
-CREATE TYPE public.app_role AS ENUM ('admin', 'employee', 'hr', 'finance');
-CREATE TYPE public.expense_status AS ENUM ('pending_l1', 'pending_l2', 'approved', 'rejected');
-CREATE TYPE public.approval_action AS ENUM ('approved', 'rejected', 'reassigned');
-CREATE TYPE public.profile_status AS ENUM ('active', 'inactive');
+DO $$ BEGIN
+  CREATE TYPE public.app_role AS ENUM ('admin', 'employee', 'hr', 'finance');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.expense_status AS ENUM ('pending_l1', 'pending_l2', 'approved', 'rejected');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.approval_action AS ENUM ('approved', 'rejected', 'reassigned');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.profile_status AS ENUM ('active', 'inactive');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================================
 -- 2. Organizations table
@@ -351,7 +370,7 @@ CREATE POLICY "expense_update" ON public.expenses FOR UPDATE TO authenticated
   )
   WITH CHECK (
     org_id = public.user_org_id(auth.uid())
-    AND NOT (user_id = auth.uid() AND status IN ('approved','rejected'))
+    AND NOT (user_id = auth.uid() AND status IS DISTINCT FROM 'pending_l1')
   );
 
 CREATE POLICY "Employee can delete own pending expenses" ON public.expenses
@@ -388,6 +407,7 @@ CREATE POLICY "Approvers can insert history" ON public.approval_history
       SELECT 1 FROM public.expenses e
       WHERE e.id = expense_id
         AND e.org_id = public.user_org_id(auth.uid())
+        AND e.user_id != auth.uid()  -- Block self-approval audit logs
         AND (
           e.current_approver_id = auth.uid()
           OR public.has_role(auth.uid(), 'admin')
@@ -519,6 +539,8 @@ AS $$
 DECLARE
   _uid UUID := auth.uid();
   _org_id UUID;
+  _creator_email TEXT;
+  _override_plan TEXT;
 BEGIN
   IF _uid IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
@@ -551,9 +573,13 @@ BEGIN
   INSERT INTO public.org_currencies (org_id, code, symbol, name, is_default) VALUES
     (_org_id, 'USD', '$', 'US Dollar', true);
 
-  -- Seed a free subscription for the new org
+  -- Determine initial subscription plan
+  SELECT email INTO _creator_email FROM public.users WHERE id = _uid;
+  SELECT plan INTO _override_plan FROM public.plan_overrides WHERE email = _creator_email;
+
+  -- Seed a subscription for the new org
   INSERT INTO public.subscriptions (org_id, plan, status)
-  VALUES (_org_id, 'free', 'active');
+  VALUES (_org_id, COALESCE(_override_plan, 'free'), 'active');
 
   RETURN _org_id;
 END;
@@ -635,6 +661,43 @@ SET max_users = NULLIF(max_users, -1),
 INSERT INTO public.plan_limits VALUES
   ('free',5,50,false,false),('pro',50,NULL,true,false),('enterprise',NULL,NULL,true,true)
 ON CONFLICT DO NOTHING;
+
+-- ============================================================
+-- 18b. Backend Plan Overrides
+-- ============================================================
+CREATE TABLE IF NOT EXISTS public.plan_overrides (
+  email TEXT PRIMARY KEY,
+  plan TEXT NOT NULL CHECK (plan IN ('free', 'pro', 'enterprise')),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE public.plan_overrides ENABLE ROW LEVEL SECURITY;
+-- Only accessible by service role or admins via dashboard (no standard user access needed)
+
+CREATE OR REPLACE FUNCTION public.apply_plan_override()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  _org_id UUID;
+BEGIN
+  -- Find the org_id where the creator has this email
+  SELECT o.id INTO _org_id
+  FROM public.organizations o
+  JOIN public.users u ON o.created_by = u.id
+  WHERE u.email = NEW.email
+  LIMIT 1;
+
+  IF _org_id IS NOT NULL THEN
+    UPDATE public.subscriptions SET plan = NEW.plan WHERE org_id = _org_id;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_plan_override ON public.plan_overrides;
+CREATE TRIGGER on_plan_override AFTER INSERT OR UPDATE ON public.plan_overrides
+  FOR EACH ROW EXECUTE FUNCTION public.apply_plan_override();
 
 -- ============================================================
 -- 19. Notification preferences
@@ -806,6 +869,10 @@ BEGIN
 
   IF NEW.current_approver_id IS NOT NULL AND NEW.current_approver_id = NEW.user_id THEN
     RAISE EXCEPTION 'Submitter cannot be their own approver';
+  END IF;
+
+  IF TG_OP = 'UPDATE' AND OLD.user_id = auth.uid() AND OLD.status IS DISTINCT FROM NEW.status THEN
+    RAISE EXCEPTION 'Submitter cannot change the status of their own expense';
   END IF;
 
   IF TG_OP = 'INSERT' THEN

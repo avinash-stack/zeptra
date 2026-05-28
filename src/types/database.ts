@@ -70,6 +70,7 @@ export interface ExpenseCategory {
 
 export interface Expense {
   id: string;
+  org_id: string;
   user_id: string;
   amount: number;
   currency: string;
@@ -81,6 +82,7 @@ export interface Expense {
   submitted_at: string;
   decided_at: string | null;
   is_policy_exception: boolean;
+  ai_analysis?: Record<string, unknown> | null;
   version: number;
   created_at: string;
   updated_at: string;

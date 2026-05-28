@@ -74,7 +74,8 @@ const UserManagement: React.FC = () => {
         .from('users')
         .select('id, name')
         .eq('status', 'active')
-        .order('name');
+        .order('name')
+        .limit(200);
       
       if (profiles) {
         const userIds = profiles.map(p => p.id);
