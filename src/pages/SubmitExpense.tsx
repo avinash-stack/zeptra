@@ -16,34 +16,7 @@ import { Loader2, Upload, CheckCircle2, AlertTriangle, CheckCircle, Sparkles, Ch
 import type { ExpenseCategory, OrgCurrency, CategoryLimit } from '@/types/database';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-
-const expenseSchema = z.object({
-  amount: z.string()
-    .min(1, 'Amount is required')
-    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'Amount must be a positive number')
-    .refine(v => parseFloat(v) <= 10_000_000, 'Amount seems too large — please verify'),
-  currency: z.string().min(1, 'Currency is required'),
-  categoryId: z.string().uuid('Please select a category'),
-  description: z.string()
-    .min(5, 'Description must be at least 5 characters')
-    .max(500, 'Description must be under 500 characters'),
-  expenseDate: z.string()
-    .min(1, 'Date is required')
-    .refine(v => {
-      const d = new Date(v);
-      const today = new Date();
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(today.getFullYear() - 1);
-      return d <= today && d >= oneYearAgo;
-    }, 'Date must be within the last year and not in the future'),
-  gstNumber: z.string()
-    .optional()
-    .refine(v => !v || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v), 
-      'Invalid GSTIN format (must be 15 characters)'),
-});
-
-type ExpenseFormValues = z.infer<typeof expenseSchema>;
+import { expenseSchema, type ExpenseFormValues } from '@/lib/expenseSchema';
 
 const SubmitExpense: React.FC = () => {
   const { user, profile } = useAuth();
@@ -260,13 +233,24 @@ const SubmitExpense: React.FC = () => {
       const reader = new FileReader();
       reader.onload = e => {
         const arr = new Uint8Array(e.target?.result as ArrayBuffer);
-        const matched = Object.values(ALLOWED_SIGNATURES).some(sigs =>
+        let matched = Object.values(ALLOWED_SIGNATURES).some(sigs =>
           sigs.some(sig => sig.every((byte, i) => arr[i] === byte))
         );
+        
+        if (!matched && arr.length >= 12) {
+          const isFtyp = arr[4] === 0x66 && arr[5] === 0x74 && arr[6] === 0x79 && arr[7] === 0x70;
+          if (isFtyp) {
+            const typeStr = String.fromCharCode(arr[8], arr[9], arr[10], arr[11]);
+            if (['heic', 'heix', 'hevc', 'hevx', 'mif1', 'msf1'].includes(typeStr)) {
+              matched = true;
+            }
+          }
+        }
+        
         resolve(matched);
       };
       reader.onerror = () => resolve(false);
-      reader.readAsArrayBuffer(file.slice(0, 8));
+      reader.readAsArrayBuffer(file.slice(0, 12));
     });
   };
 
@@ -284,7 +268,7 @@ const SubmitExpense: React.FC = () => {
     // Validate magic bytes (actual file type, not spoofed extension)
     const isValidType = await validateFileMagicBytes(file);
     if (!isValidType) {
-      toast.error('Invalid file type. Only PDF, JPG, PNG, and WebP are allowed.');
+      toast.error('Invalid file type. Only PDF, JPG, PNG, WebP, and HEIC are allowed.');
       e.target.value = '';
       return;
     }
@@ -408,6 +392,30 @@ const SubmitExpense: React.FC = () => {
   const currSymbol = selectedCurr?.symbol || '₹';
   const formatMoney = (value: number) =>
     `${currSymbol}${Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+
+  if (profile && !profile.manager_id) {
+    return (
+      <div className="max-w-2xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            Submit Expense
+          </h1>
+        </div>
+        <Card className="border-destructive/50 bg-destructive/5">
+          <CardContent className="pt-8 pb-8 flex flex-col items-center justify-center text-center space-y-4">
+            <AlertTriangle className="w-12 h-12 text-destructive" />
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">No Approver Assigned</h2>
+              <p className="text-muted-foreground max-w-md">
+                You cannot submit expenses because there is no manager assigned to your profile. Please ask HR or an administrator to set your manager first.
+              </p>
+            </div>
+            <Button variant="outline" className="mt-4" onClick={() => window.history.back()}>Go Back</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -633,13 +641,13 @@ const SubmitExpense: React.FC = () => {
                         'Click to upload or drag and drop'
                       )}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG up to 10MB</p>
+                    <p className="text-xs text-muted-foreground mt-1">PDF, PNG, JPG, HEIC up to 10MB</p>
                   </>
                 )}
                 <input
                   id="receipt-input"
                   type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
+                  accept=".pdf,.png,.jpg,.jpeg,.heic,.heif"
                   className="hidden"
                   onChange={handleReceiptChange}
                 />
