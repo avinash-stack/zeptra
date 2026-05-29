@@ -73,8 +73,8 @@ const AllExpenses: React.FC = () => {
       toast.error('You cannot approve your own expense');
       return;
     }
-    if (expense.status !== 'pending_l2') {
-      toast.error('Final approval requires level 1 approval first');
+    if (expense.status !== 'pending_l2' && expense.status !== 'pending_l1') {
+      toast.error('Expense must be pending approval');
       return;
     }
     try {

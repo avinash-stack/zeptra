@@ -16,18 +16,18 @@ describe('SubmitExpense Zod Validation Schema Boundary Tests', () => {
     expect(result.success).toBe(true);
   });
 
-  it('fails validation when description is less than 5 characters ("Taxi")', () => {
-    const invalidData = { ...validData, description: 'Taxi' };
+  it('fails validation when description is less than 3 characters ("Go")', () => {
+    const invalidData = { ...validData, description: 'Go' };
     const result = expenseSchema.safeParse(invalidData);
     expect(result.success).toBe(false);
     if (!result.success) {
       const errorMsg = result.error.errors.find(e => e.path.includes('description'))?.message;
-      expect(errorMsg).toBe('Description must be at least 5 characters');
+      expect(errorMsg).toBe('Description must be at least 3 characters');
     }
   });
 
-  it('fails validation when amount exceeds the 10,000,000 limit', () => {
-    const invalidData = { ...validData, amount: '10000001' };
+  it('fails validation when amount exceeds the 1,000,000,000 limit', () => {
+    const invalidData = { ...validData, amount: '1000000001' };
     const result = expenseSchema.safeParse(invalidData);
     expect(result.success).toBe(false);
     if (!result.success) {

@@ -305,8 +305,9 @@ const SubmitExpense: React.FC = () => {
           ocrFoundUseful = true;
         }
       }
-    } catch {
-      // OCR failure is silent — never block the user
+    } catch (err: any) {
+      console.warn('OCR processing error:', err);
+      toast.error('Failed to auto-scan receipt. Please enter details manually.');
     } finally {
       setScanning(false);
     }
@@ -676,10 +677,10 @@ const SubmitExpense: React.FC = () => {
                       <Input
                         id="gstin"
                         placeholder="22AAAAA0000A1Z5"
-                        maxLength={15}
+                        maxLength={25}
                         {...field}
                         value={field.value || ''}
-                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                        onChange={(e) => field.onChange(e.target.value.toUpperCase().replace(/[\s-]/g, ''))}
                         className={errors.gstNumber ? 'border-destructive' : ''}
                       />
                     )}

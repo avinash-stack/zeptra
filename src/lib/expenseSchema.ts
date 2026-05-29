@@ -4,20 +4,22 @@ export const expenseSchema = z.object({
   amount: z.string()
     .min(1, 'Amount is required')
     .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, 'Amount must be a positive number')
-    .refine(v => parseFloat(v) <= 10_000_000, 'Amount seems too large — please verify'),
+    .refine(v => parseFloat(v) <= 1_000_000_000, 'Amount seems too large — please verify'),
   currency: z.string().min(1, 'Currency is required'),
   categoryId: z.string().uuid('Please select a category'),
   description: z.string()
-    .min(5, 'Description must be at least 5 characters')
+    .min(3, 'Description must be at least 3 characters')
     .max(500, 'Description must be under 500 characters'),
   expenseDate: z.string()
     .min(1, 'Date is required')
     .refine(v => {
-      const d = new Date(v);
+      const parts = v.split('-');
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       const today = new Date();
-      const oneYearAgo = new Date();
-      oneYearAgo.setFullYear(today.getFullYear() - 1);
-      return d <= today && d >= oneYearAgo;
+      const localToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const oneYearAgo = new Date(localToday);
+      oneYearAgo.setFullYear(localToday.getFullYear() - 1);
+      return d <= localToday && d >= oneYearAgo;
     }, 'Date must be within the last year and not in the future'),
   gstNumber: z.string()
     .optional()

@@ -128,19 +128,26 @@ const Approvals: React.FC = () => {
       let newApprover: string | null = null;
 
       if (expense.status === 'pending_l1') {
-        const { data: managerProfile } = await supabase
-          .from('users')
-          .select('manager_id')
-          .eq('id', user!.id)
-          .single();
+        const isFinance = hasAnyRole(['finance']);
 
-        if (!managerProfile?.manager_id) {
-          toast.error('No level 2 approver is assigned to your profile');
-          return;
+        if (isFinance) {
+          newStatus = 'approved';
+          newApprover = null;
+        } else {
+          const { data: managerProfile } = await supabase
+            .from('users')
+            .select('manager_id')
+            .eq('id', user!.id)
+            .single();
+
+          if (!managerProfile?.manager_id) {
+            newStatus = 'approved';
+            newApprover = null;
+          } else {
+            newStatus = 'pending_l2';
+            newApprover = managerProfile.manager_id;
+          }
         }
-
-        newStatus = 'pending_l2';
-        newApprover = managerProfile.manager_id;
       } else if (expense.status === 'pending_l2') {
         newStatus = 'approved';
       } else {

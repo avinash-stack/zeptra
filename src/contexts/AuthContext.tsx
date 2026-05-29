@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { User, Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import type { Profile, AppRole, Organization } from '@/types/database';
+import { toast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
@@ -81,6 +82,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUserData = useCallback(async (userId: string) => {
     const profileData = await fetchProfile(userId);
+    
+    if (profileData && profileData.status === 'inactive') {
+      toast.error('Your account has been deactivated');
+      await supabase.auth.signOut();
+      setUser(null); setSession(null); setProfile(null);
+      setOrganization(null); setRoles([]); setIsManager(false);
+      return;
+    }
+
     await fetchRoles(userId);
     await checkIsManager(userId);
     if (profileData?.org_id) {

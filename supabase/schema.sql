@@ -220,6 +220,17 @@ AS $$
   SELECT org_id FROM public.users WHERE id = _user_id
 $$;
 
+-- Check if user is active
+CREATE OR REPLACE FUNCTION public.is_active_user(_user_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT is_active FROM public.users WHERE id = _user_id
+$$;
+
 -- ============================================================
 -- 9b. AI analysis column on expenses
 -- ============================================================
@@ -344,6 +355,7 @@ CREATE POLICY "Employee can insert own expenses" ON public.expenses
   FOR INSERT TO authenticated
   WITH CHECK (
     user_id = auth.uid()
+    AND public.is_active_user(auth.uid()) = true
     AND org_id = public.user_org_id(auth.uid())
     AND status = 'pending_l1'
     AND category_id IN (
@@ -363,10 +375,13 @@ CREATE POLICY "Employee can insert own expenses" ON public.expenses
 DROP POLICY IF EXISTS "expense_update" ON public.expenses;
 CREATE POLICY "expense_update" ON public.expenses FOR UPDATE TO authenticated
   USING (
-    (user_id = auth.uid() AND status = 'pending_l1')
-    OR current_approver_id = auth.uid()
-    OR (public.has_role(auth.uid(),'admin') AND org_id = public.user_org_id(auth.uid()))
-    OR (public.has_role(auth.uid(),'finance') AND org_id = public.user_org_id(auth.uid()))
+    public.is_active_user(auth.uid()) = true AND
+    (
+      (user_id = auth.uid() AND status = 'pending_l1')
+      OR current_approver_id = auth.uid()
+      OR (public.has_role(auth.uid(),'admin') AND org_id = public.user_org_id(auth.uid()))
+      OR (public.has_role(auth.uid(),'finance') AND org_id = public.user_org_id(auth.uid()))
+    )
   )
   WITH CHECK (
     org_id = public.user_org_id(auth.uid())
@@ -375,7 +390,7 @@ CREATE POLICY "expense_update" ON public.expenses FOR UPDATE TO authenticated
 
 CREATE POLICY "Employee can delete own pending expenses" ON public.expenses
   FOR DELETE TO authenticated
-  USING (user_id = auth.uid() AND status = 'pending_l1');
+  USING (user_id = auth.uid() AND status = 'pending_l1' AND public.is_active_user(auth.uid()) = true);
 
 -- Approval history
 CREATE POLICY "View approval history" ON public.approval_history
@@ -1007,6 +1022,30 @@ $$;
 DROP TRIGGER IF EXISTS on_user_change ON public.users;
 CREATE TRIGGER on_user_change AFTER INSERT OR UPDATE ON public.users
   FOR EACH ROW EXECUTE FUNCTION public.log_user_change();
+
+CREATE OR REPLACE FUNCTION public.prevent_unauthorized_user_updates()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF auth.uid() = NEW.id AND NOT (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'hr')) THEN
+    IF OLD.manager_id IS DISTINCT FROM NEW.manager_id THEN
+      RAISE EXCEPTION 'Users cannot change their own manager';
+    END IF;
+    IF OLD.status IS DISTINCT FROM NEW.status THEN
+      RAISE EXCEPTION 'Users cannot change their own status';
+    END IF;
+    IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
+      RAISE EXCEPTION 'Users cannot change their own active status';
+    END IF;
+    IF OLD.org_id IS DISTINCT FROM NEW.org_id THEN
+      RAISE EXCEPTION 'Users cannot change their own organization';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS zz_prevent_unauthorized_user_updates ON public.users;
+CREATE TRIGGER zz_prevent_unauthorized_user_updates BEFORE UPDATE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.prevent_unauthorized_user_updates();
 
 CREATE OR REPLACE FUNCTION public.log_category_change()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
