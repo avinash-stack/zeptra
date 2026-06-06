@@ -53,13 +53,13 @@ function buildEmailHtml(params: {
   let subject = "";
   let heading = "";
   let body = "";
-  let accentColor = "#6366f1"; // primary indigo
+  let accentColor = "#3B82F6"; // Electric Blue
 
   switch (event) {
     case "submitted":
       subject = `[${orgNameEsc}] Action required: ${employeeNameEsc} submitted ${formattedAmount} for ${categoryEsc}`;
       heading = "New Expense Awaiting Your Approval";
-      accentColor = "#6366f1";
+      accentColor = "#3B82F6";
       body = `
         <p><strong>${employeeNameEsc}</strong> has submitted an expense that requires your review.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0;">

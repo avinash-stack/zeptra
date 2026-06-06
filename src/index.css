@@ -4,123 +4,111 @@
 
 @layer base {
   :root {
-    /* Brilliance */
-    --background: 0 20% 99%;
-    /* Night Black */
-    --foreground: 228 7% 19%;
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
 
     --card: 0 0% 100%;
-    --card-foreground: 228 7% 19%;
+    --card-foreground: 222 47% 11%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 228 7% 19%;
+    --popover-foreground: 222 47% 11%;
 
-    /* Precious Persimmon */
-    --primary: 21 93% 60%;
+    /* Electric Blue */
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    /* Violet Essence */
-    --secondary: 300 2% 90%;
-    --secondary-foreground: 228 7% 19%;
+    --secondary: 214 32% 91%;
+    --secondary-foreground: 222 47% 11%;
 
-    --muted: 300 2% 90%;
-    /* Palladium */
-    --muted-foreground: 0 0% 69%;
+    --muted: 214 32% 91%;
+    --muted-foreground: 215 16% 34%;
 
-    /* No Way Rosé */
-    --accent: 17 87% 78%;
-    --accent-foreground: 228 7% 19%;
+    /* Lighter blue accent */
+    --accent: 217 91% 95%;
+    --accent-foreground: 217 91% 60%;
 
-    /* Keep existing red */
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    /* Keep existing green */
-    --success: 142 71% 45%;
+    --success: 160 84% 39%;
     --success-foreground: 0 0% 100%;
 
-    /* Keep existing amber */
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
-    /* Maps to No Way Rosé */
-    --info: 17 87% 78%;
-    /* Dark coral text */
-    --info-foreground: 17 71% 26%;
+    --info: 217 91% 90%;
+    --info-foreground: 224 76% 48%;
 
-    --border: 300 2% 90%;
-    --input: 300 2% 90%;
-    --ring: 21 93% 60%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 217 91% 60%;
 
     --radius: 0.75rem;
 
-    /* Sidebar Background: Night Black */
-    --sidebar-background: 228 7% 19%;
-    --sidebar-foreground: 0 20% 99%;
-    --sidebar-primary: 21 93% 60%;
+    /* Sidebar */
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    /* 3D3E43 */
-    --sidebar-accent: 228 5% 25%;
-    --sidebar-accent-foreground: 0 20% 99%;
-    --sidebar-border: 228 5% 25%;
-    --sidebar-ring: 21 93% 60%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 217 91% 60%;
 
-    /* Gradient: Persimmon → No Way Rosé */
-    --gradient-start: 21 93% 60%;
-    --gradient-end: 17 87% 78%;
+    /* Gradient: Electric Blue → Light Blue */
+    --gradient-start: 217 91% 60%;
+    --gradient-end: 217 91% 70%;
   }
 
   .dark {
-    /* 1A1B1E */
-    --background: 228 8% 11%;
-    --foreground: 0 20% 99%;
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
 
-    /* 24252A */
-    --card: 228 7% 16%;
-    --card-foreground: 0 20% 99%;
+    --card: 217 33% 17%;
+    --card-foreground: 210 40% 98%;
 
-    --popover: 228 7% 16%;
-    --popover-foreground: 0 20% 99%;
+    --popover: 217 33% 17%;
+    --popover-foreground: 210 40% 98%;
 
-    --primary: 21 93% 60%;
+    --primary: 217 91% 60%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 228 7% 19%;
-    --secondary-foreground: 300 2% 90%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 214 32% 91%;
 
-    --muted: 228 7% 19%;
-    --muted-foreground: 0 0% 69%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 16% 47%;
 
-    --accent: 228 5% 25%;
-    --accent-foreground: 17 87% 78%;
+    --accent: 217 33% 22%;
+    --accent-foreground: 217 91% 70%;
 
     --destructive: 0 63% 31%;
-    --destructive-foreground: 0 20% 99%;
+    --destructive-foreground: 210 40% 98%;
 
-    --success: 142 71% 35%;
-    --success-foreground: 0 20% 99%;
+    --success: 160 84% 30%;
+    --success-foreground: 210 40% 98%;
 
     --warning: 38 92% 40%;
-    --warning-foreground: 0 20% 99%;
+    --warning-foreground: 210 40% 98%;
 
-    --info: 17 71% 26%;
-    --info-foreground: 17 87% 78%;
+    --info: 224 76% 25%;
+    --info-foreground: 217 91% 70%;
 
-    --border: 228 5% 25%;
-    --input: 228 5% 25%;
-    --ring: 21 93% 60%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 217 91% 60%;
 
-    --sidebar-background: 228 8% 11%;
-    --sidebar-foreground: 0 20% 99%;
-    --sidebar-primary: 21 93% 60%;
+    --sidebar-background: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-primary: 217 91% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 228 7% 19%;
-    --sidebar-accent-foreground: 0 20% 99%;
-    --sidebar-border: 228 7% 19%;
-    --sidebar-ring: 21 93% 60%;
+    --sidebar-accent: 217 33% 17%;
+    --sidebar-accent-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 17%;
+    --sidebar-ring: 217 91% 60%;
 
-    --gradient-start: 21 93% 60%;
-    --gradient-end: 17 87% 78%;
+    --gradient-start: 217 91% 60%;
+    --gradient-end: 217 91% 70%;
   }
 }
 

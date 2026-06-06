@@ -14,7 +14,7 @@ import type { OrgCurrency } from '@/types/database';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePlanLimit } from '@/hooks/usePlanLimit';
 
-const COLORS = ['hsl(262, 83%, 58%)', 'hsl(38, 92%, 50%)', 'hsl(142, 71%, 45%)', 'hsl(0, 84%, 60%)'];
+const COLORS = ['hsl(217, 91%, 60%)', 'hsl(38, 92%, 50%)', 'hsl(160, 84%, 39%)', 'hsl(0, 84%, 60%)'];
 
 const Dashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -348,7 +348,7 @@ const Dashboard: React.FC = () => {
                           <XAxis dataKey="name" className="text-xs" />
                           <YAxis className="text-xs" />
                           <Tooltip />
-                          <Bar dataKey="amount" fill="hsl(262, 83%, 58%)" radius={[6, 6, 0, 0]} />
+                          <Bar dataKey="amount" fill="hsl(217, 91%, 60%)" radius={[6, 6, 0, 0]} />
                         </BarChart>
                       </ResponsiveContainer>
                     ) : (

@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
 <body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <div style="max-width:560px;margin:0 auto;padding:40px 20px;">
     <div style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-      <div style="background:#6366f1;padding:24px 32px;">
+      <div style="background:#3B82F6;padding:24px 32px;">
         <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">Zeptra</h1>
       </div>
       <div style="padding:32px;">
@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
         <p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.5;">
           <strong>${esc(inviterName)}</strong> has invited you to join <strong>${esc(orgName)}</strong> as a <strong>${esc(role)}</strong> on Zeptra.
         </p>
-        <a href="${esc(actionLink)}" style="display:inline-block;background:#6366f1;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation & Set Password</a>
+        <a href="${esc(actionLink)}" style="display:inline-block;background:#3B82F6;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation & Set Password</a>
         <p style="margin:24px 0 0;color:#9ca3af;font-size:14px;">This link expires in 24 hours.</p>
       </div>
       <div style="padding:16px 32px;border-top:1px solid #e5e7eb;background:#f9fafb;">
