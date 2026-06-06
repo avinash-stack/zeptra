@@ -39,12 +39,11 @@ const Login: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/10 via-background to-info/10 p-4">
       <Card className="w-full max-w-md shadow-2xl border-0">
         <CardHeader className="text-center space-y-4">
-          <div className="mx-auto w-20 h-20 flex items-center justify-center">
-            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="w-14 h-14 object-contain" />
+          <div className="mx-auto w-32 h-32 flex items-center justify-center bg-white dark:bg-white/95 rounded-2xl shadow-sm p-4 mb-2">
+            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="w-full h-full object-contain" />
           </div>
           <div>
-            <CardTitle className="text-2xl font-bold">Zeptra</CardTitle>
-            <CardDescription>Sign in to manage your expenses</CardDescription>
+            <CardDescription className="text-base">Sign in to manage your expenses</CardDescription>
           </div>
         </CardHeader>
         <CardContent>

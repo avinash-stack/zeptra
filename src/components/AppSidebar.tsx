@@ -56,17 +56,16 @@ export function AppSidebar() {
         <SidebarGroup>
           <SidebarGroupLabel className="px-4 py-3">
             <Link to="/app" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <img
-                src="/zeptra-logo.png"
-                alt="Zeptra Logo"
-                className="w-8 h-8 shrink-0 object-contain"
-              />
-              {!collapsed && (
+              <div className="bg-white rounded-xl p-1.5 shrink-0 flex items-center justify-center w-12 h-12 shadow-sm">
+                <img
+                  src="/zeptra-logo.png"
+                  alt="Zeptra Logo"
+                  className="w-full h-full object-contain"
+                />
+              </div>
+              {!collapsed && organization && (
                 <div className="flex flex-col min-w-0">
-                  <span className="font-bold text-lg text-sidebar-foreground leading-tight">Zeptra</span>
-                  {organization && (
-                    <span className="text-[10px] text-sidebar-foreground/50 truncate">{organization.name}</span>
-                  )}
+                  <span className="text-xs font-medium text-sidebar-foreground/70 truncate">{organization.name}</span>
                 </div>
               )}
             </Link>
