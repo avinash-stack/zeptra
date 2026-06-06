@@ -244,9 +244,21 @@ const UserManagement: React.FC = () => {
   };
 
   const updateUserRole = async (userId: string, role: AppRole) => {
-    // Delete existing roles and insert new one
-    await supabase.from('user_roles').delete().eq('user_id', userId);
-    await supabase.from('user_roles').insert({ user_id: userId, role });
+    const oldRoles = users.find(u => u.id === userId)?.roles || [];
+    const { error: deleteError } = await supabase.from('user_roles').delete().eq('user_id', userId);
+    if (deleteError) {
+      toast.error('Failed to update role');
+      return;
+    }
+    const { error: insertError } = await supabase.from('user_roles').insert({ user_id: userId, role });
+    if (insertError) {
+      // Attempt to restore previous roles
+      if (oldRoles.length) {
+        await supabase.from('user_roles').insert(oldRoles.map(r => ({ user_id: userId, role: r })));
+      }
+      toast.error('Failed to update role');
+      return;
+    }
     toast.success('Role updated');
     fetchUsers();
     fetchManagers();
@@ -468,7 +480,7 @@ const UserManagement: React.FC = () => {
       </Card>
 
       {/* Create User Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={open => { if (!open && creatingUser) return; setShowCreateDialog(open); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Invite User</DialogTitle>
@@ -524,7 +536,7 @@ const UserManagement: React.FC = () => {
 
       {/* Edit User Dialog */}
       <Dialog open={!!editUser} onOpenChange={open => !open && setEditUser(null)}>
-        <DialogContent>
+        <DialogContent key={editUser?.id}>
           <DialogHeader>
             <DialogTitle>Edit User - {editUser?.name}</DialogTitle>
           </DialogHeader>

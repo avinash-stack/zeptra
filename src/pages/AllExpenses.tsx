@@ -37,8 +37,7 @@ const AllExpenses: React.FC = () => {
     let query = supabase
       .from('expenses')
       .select('*, expense_categories(name, gl_code)')
-      .order('submitted_at', { ascending: false })
-      .range(0, 99);
+      .order('submitted_at', { ascending: false });
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
 
