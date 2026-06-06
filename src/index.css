@@ -129,6 +129,11 @@
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 4rem; /* h-16 = 4rem */
+  }
+
   body {
     @apply bg-background text-foreground;
   }

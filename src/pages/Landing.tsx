@@ -270,7 +270,7 @@ const Landing: React.FC = () => {
               <p className="text-xl text-muted-foreground">Start free, upgrade when your team grows.</p>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+            <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
               {/* Free Card */}
               <div className="bg-card border border-border rounded-2xl p-8 flex flex-col shadow-sm">
                 <h3 className="text-2xl font-bold text-foreground mb-2">Free forever</h3>
@@ -301,7 +301,7 @@ const Landing: React.FC = () => {
                   <span className="text-muted-foreground font-medium">/ month</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Everything in Free', 'Unlimited users', 'Unlimited expenses', 'Analytics dashboard', 'Tally & CSV export', 'Priority support'].map((item, i) => (
+                  {['Everything in Free', 'Up to 50 users', 'Unlimited expenses', 'Analytics dashboard', 'Tally & CSV export', 'Priority support'].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-foreground font-medium">
                       <CheckCircle className="w-5 h-5 text-primary shrink-0" /> {item}
                     </li>
@@ -309,6 +309,24 @@ const Landing: React.FC = () => {
                 </ul>
                 <Button asChild size="lg" className="w-full h-12 bg-primary text-white hover:bg-primary/90 text-base shadow-lg shadow-primary/25">
                   <Link to="/create-organization">Start free trial</Link>
+                </Button>
+              </div>
+
+              {/* Enterprise Card */}
+              <div className="bg-card border border-border rounded-2xl p-8 flex flex-col shadow-sm">
+                <h3 className="text-2xl font-bold text-foreground mb-2">Enterprise</h3>
+                <div className="flex items-baseline gap-2 mb-6">
+                  <span className="text-4xl font-extrabold text-foreground">Custom</span>
+                </div>
+                <ul className="space-y-4 mb-8 flex-1">
+                  {['Everything in Pro', 'Unlimited users', 'API access', 'Dedicated account manager', 'Custom integrations', 'SLA'].map((item, i) => (
+                    <li key={i} className="flex items-center gap-3 text-foreground font-medium">
+                      <CheckCircle className="w-5 h-5 text-primary shrink-0" /> {item}
+                    </li>
+                  ))}
+                </ul>
+                <Button asChild variant="outline" size="lg" className="w-full h-12 text-base border-border hover:bg-muted">
+                  <Link to="/create-organization">Contact sales</Link>
                 </Button>
               </div>
             </div>
