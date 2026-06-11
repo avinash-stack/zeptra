@@ -131,7 +131,7 @@ const Dashboard: React.FC = () => {
   }, {} as Record<string, number>);
   
   const categoryChartData = Object.entries(categoryData)
-    .map(([name, amount]) => ({ name, amount }))
+    .map(([name, amount]) => ({ name, amount: Number(amount) }))
     .sort((a, b) => b.amount - a.amount)
     .slice(0, 8);
 
