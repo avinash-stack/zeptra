@@ -1,11 +1,12 @@
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { HashRouter as BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
+import type { AppRole } from "@/types/database";
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import OrganizationProfile from "@/pages/OrganizationProfile";
@@ -25,11 +26,21 @@ import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
 
+const normalizeLegacyHashRoute = () => {
+  if (typeof window === "undefined") return;
+  if (!window.location.hash.startsWith("#/")) return;
+
+  const hashRoute = window.location.hash.slice(1);
+  window.history.replaceState(null, "", hashRoute);
+};
+
+normalizeLegacyHashRoute();
+
 class AppErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean }
 > {
-  constructor(p: any) { super(p); this.state = { hasError: false }; }
+  constructor(p: { children: React.ReactNode }) { super(p); this.state = { hasError: false }; }
   static getDerivedStateFromError() { return { hasError: true }; }
   render() {
     if (this.state.hasError) return (
@@ -49,7 +60,7 @@ class AppErrorBoundary extends React.Component<
 
 const ProtectedRoute = ({ children, allowedRoles, requireManager }: {
   children: React.ReactNode;
-  allowedRoles?: string[];
+  allowedRoles?: AppRole[];
   requireManager?: boolean;
 }) => {
   const { user, loading, roles, isManager } = useAuth();
@@ -65,7 +76,7 @@ const ProtectedRoute = ({ children, allowedRoles, requireManager }: {
   if (!user) return <Navigate to="/login" replace />;
 
   // Check role-based access
-  if (allowedRoles && !allowedRoles.some(r => roles.includes(r as any))) {
+  if (allowedRoles && !allowedRoles.some(r => roles.includes(r))) {
     // Also allow if requireManager is true and user is a manager
     if (!requireManager || !isManager) {
       return <Navigate to="/app" replace />;
