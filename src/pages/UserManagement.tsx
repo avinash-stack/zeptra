@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -28,6 +28,50 @@ interface UserWithRoles extends Profile {
   roles: AppRole[];
   managerName?: string;
 }
+
+type UserRoleRow = {
+  user_id: string;
+  role: AppRole;
+};
+
+type ManageUserPayload = {
+  action: 'delete' | 'reset_password' | 'update_role' | 'update_profile' | 'update_status';
+  target_user_id: string;
+  email?: string;
+  redirect_to?: string;
+  role?: AppRole;
+  manager_id?: string | null;
+  status?: 'active' | 'inactive';
+};
+
+const getFunctionErrorMessage = async (error: unknown, fallback: string, functionName = 'manage-user') => {
+  const maybeContext = error as { context?: Response };
+  if (maybeContext?.context) {
+    try {
+      const body = await maybeContext.context.clone().json();
+      if (body?.error) return String(body.error);
+    } catch {
+      // Fall back to the SDK error message below.
+    }
+  }
+
+  if (error instanceof Error && error.name === 'FunctionsFetchError') {
+    return `Could not reach the \`${functionName}\` Edge Function. Deploy \`${functionName}\` and confirm its CORS/env settings are configured in Supabase.`;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+};
+
+const invokeManageUser = async (body: ManageUserPayload) => {
+  const { data, error } = await supabase.functions.invoke('manage-user', { body });
+  if (error) {
+    throw new Error(await getFunctionErrorMessage(error, 'User update failed'));
+  }
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+  return data;
+};
 
 const UserManagement: React.FC = () => {
   const { profile: currentProfile, roles } = useAuth();
@@ -68,7 +112,7 @@ const UserManagement: React.FC = () => {
   const canResetPasswords = isAdmin;
   const canDeleteUsers = isAdmin;
 
-  const fetchManagers = async () => {
+  const fetchManagers = useCallback(async () => {
     try {
       const { data: profiles } = await supabase
         .from('users')
@@ -79,13 +123,13 @@ const UserManagement: React.FC = () => {
       
       if (profiles) {
         const userIds = profiles.map(p => p.id);
-        let rolesData: any[] = [];
+        let rolesData: UserRoleRow[] = [];
         if (userIds.length > 0) {
           const { data: fetchedRoles } = await supabase
             .from('user_roles')
-            .select('*')
+            .select('user_id, role')
             .in('user_id', userIds);
-          rolesData = fetchedRoles || [];
+          rolesData = (fetchedRoles || []) as UserRoleRow[];
         }
         
         const managersList: ManagerUser[] = profiles.map(p => ({
@@ -98,9 +142,9 @@ const UserManagement: React.FC = () => {
     } catch (err) {
       console.error('Failed to fetch managers:', err);
     }
-  };
+  }, []);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
@@ -123,17 +167,17 @@ const UserManagement: React.FC = () => {
       if (profiles) {
         const userIds = profiles.map(p => p.id);
         
-        let rolesData: any[] = [];
+        let rolesData: UserRoleRow[] = [];
         if (userIds.length > 0) {
           const { data: fetchedRoles } = await supabase
             .from('user_roles')
-            .select('*')
+            .select('user_id, role')
             .in('user_id', userIds);
-          rolesData = fetchedRoles || [];
+          rolesData = (fetchedRoles || []) as UserRoleRow[];
         }
 
         const managerIds = [...new Set(profiles.map(p => p.manager_id).filter(Boolean))];
-        let managerMap = new Map<string, string>();
+        const managerMap = new Map<string, string>();
         if (managerIds.length > 0) {
           const { data: managersData } = await supabase
             .from('users')
@@ -161,11 +205,11 @@ const UserManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [page, searchTerm]);
 
   useEffect(() => {
     fetchManagers();
-  }, []);
+  }, [fetchManagers]);
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -175,7 +219,7 @@ const UserManagement: React.FC = () => {
     return () => {
       clearTimeout(handler);
     };
-  }, [page, searchTerm]);
+  }, [fetchUsers]);
 
   const handleCreateUser = async () => {
     if (!newName.trim() || !newEmail.trim()) {
@@ -200,16 +244,7 @@ const UserManagement: React.FC = () => {
       });
 
       if (error) {
-        // Extract actual error message from the function response
-        let detail = '';
-        try {
-          if ((error as any).context) {
-            const res = (error as any).context as Response;
-            const body = await res.json();
-            detail = body?.error || '';
-          }
-        } catch { /* ignore parse errors */ }
-        throw new Error(detail || error.message);
+        throw new Error(await getFunctionErrorMessage(error, 'Failed to send invite', 'invite-user'));
       }
       if (data?.error) throw new Error(data.error);
 
@@ -229,67 +264,55 @@ const UserManagement: React.FC = () => {
   const toggleUserStatus = async (userId: string, currentStatus: string) => {
     setActionUserId(userId);
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
-    const { error } = await supabase
-      .from('users')
-      .update({ status: newStatus, is_active: newStatus === 'active' })
-      .eq('id', userId);
-    if (error) {
-      toast.error('Failed to update user status');
-    } else {
+    try {
+      await invokeManageUser({
+        action: 'update_status',
+        target_user_id: userId,
+        status: newStatus,
+      });
       toast.success(`User ${newStatus === 'active' ? 'activated' : 'deactivated'}`);
       fetchUsers();
       fetchManagers();
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update user status');
+    } finally {
+      setActionUserId(null);
     }
-    setActionUserId(null);
   };
 
   const updateUserRole = async (userId: string, role: AppRole) => {
-    const oldRoles = users.find(u => u.id === userId)?.roles || [];
-    const { error: deleteError } = await supabase.from('user_roles').delete().eq('user_id', userId);
-    if (deleteError) {
-      toast.error('Failed to update role');
-      return;
+    setActionUserId(userId);
+    try {
+      await invokeManageUser({
+        action: 'update_role',
+        target_user_id: userId,
+        role,
+      });
+      toast.success('Role updated');
+      fetchUsers();
+      fetchManagers();
+      setEditUser(null);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update role');
+    } finally {
+      setActionUserId(null);
     }
-    const { error: insertError } = await supabase.from('user_roles').insert({ user_id: userId, role });
-    if (insertError) {
-      // Attempt to restore previous roles
-      if (oldRoles.length) {
-        await supabase.from('user_roles').insert(oldRoles.map(r => ({ user_id: userId, role: r })));
-      }
-      toast.error('Failed to update role');
-      return;
-    }
-    toast.success('Role updated');
-    fetchUsers();
-    fetchManagers();
-    setEditUser(null);
   };
 
   const resetUserPassword = async (user: UserWithRoles) => {
     setActionUserId(user.id);
     try {
       const redirectTo = (import.meta.env.VITE_INVITE_REDIRECT_TO as string | undefined) || `${window.location.origin}/set-password`;
-      const { data, error } = await supabase.functions.invoke('manage-user', {
-        body: {
-          action: 'reset_password',
-          target_user_id: user.id,
-          email: user.email,
-          redirect_to: redirectTo,
-        },
+      await invokeManageUser({
+        action: 'reset_password',
+        target_user_id: user.id,
+        email: user.email,
+        redirect_to: redirectTo,
       });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
 
       toast.success(`Password reset email sent to ${user.email}`);
     } catch (error: unknown) {
-      let message = error instanceof Error ? error.message : 'Failed to reset password';
-
-      if (error instanceof Error && error.name === 'FunctionsFetchError') {
-        message = 'Could not reach the `manage-user` Edge Function. Deploy `manage-user` and confirm its CORS/env settings are configured in Supabase.';
-      }
-
-      toast.error(message);
+      toast.error(error instanceof Error ? error.message : 'Failed to reset password');
     } finally {
       setActionUserId(null);
     }
@@ -300,39 +323,39 @@ const UserManagement: React.FC = () => {
 
     setActionUserId(deleteUser.id);
     try {
-      const { data, error } = await supabase.functions.invoke('manage-user', {
-        body: {
-          action: 'delete',
-          target_user_id: deleteUser.id,
-        },
+      await invokeManageUser({
+        action: 'delete',
+        target_user_id: deleteUser.id,
       });
-
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
 
       toast.success(`Deleted ${deleteUser.email}`);
       setDeleteUser(null);
       fetchUsers();
       fetchManagers();
     } catch (error: unknown) {
-      let message = error instanceof Error ? error.message : 'Failed to delete user';
-
-      if (error instanceof Error && error.name === 'FunctionsFetchError') {
-        message = 'Could not reach the `manage-user` Edge Function. Deploy `manage-user` and confirm its CORS/env settings are configured in Supabase.';
-      }
-
-      toast.error(message);
+      toast.error(error instanceof Error ? error.message : 'Failed to delete user');
     } finally {
       setActionUserId(null);
     }
   };
 
   const updateUserManager = async (userId: string, managerId: string) => {
-    await supabase.from('users').update({ manager_id: managerId || null }).eq('id', userId);
-    toast.success('Manager updated');
-    fetchUsers();
-    fetchManagers();
-    setEditUser(null);
+    setActionUserId(userId);
+    try {
+      await invokeManageUser({
+        action: 'update_profile',
+        target_user_id: userId,
+        manager_id: managerId || null,
+      });
+      toast.success('Manager updated');
+      fetchUsers();
+      fetchManagers();
+      setEditUser(null);
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to update manager');
+    } finally {
+      setActionUserId(null);
+    }
   };
 
   const resetForm = () => {
@@ -428,7 +451,7 @@ const UserManagement: React.FC = () => {
                   </TableCell>
                   <TableCell>
                     <div className="flex gap-1">
-                      {canEditUsers && (
+                      {canEditUsers && u.id !== currentProfile?.id && (
                         <Button variant="ghost" size="icon" onClick={() => setEditUser(u)} title="Edit user">
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -544,7 +567,7 @@ const UserManagement: React.FC = () => {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Role</Label>
-                <Select defaultValue={editUser.roles[0]} onValueChange={v => updateUserRole(editUser.id, v as AppRole)}>
+                <Select defaultValue={editUser.roles[0]} onValueChange={v => updateUserRole(editUser.id, v as AppRole)} disabled={actionUserId === editUser.id}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(isAdmin ? adminAssignableRoles : hrAssignableRoles).map(role => (
@@ -557,7 +580,7 @@ const UserManagement: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label>Manager</Label>
-                <Select defaultValue={editUser.manager_id || 'none'} onValueChange={v => updateUserManager(editUser.id, v === 'none' ? '' : v)}>
+                <Select defaultValue={editUser.manager_id || 'none'} onValueChange={v => updateUserManager(editUser.id, v === 'none' ? '' : v)} disabled={actionUserId === editUser.id}>
                   <SelectTrigger><SelectValue placeholder="Select manager" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No Manager</SelectItem>
