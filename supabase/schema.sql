@@ -517,21 +517,37 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  INSERT INTO public.users (id, name, email, first_name, last_name)
-  VALUES (
-    NEW.id,
-    COALESCE(NEW.raw_user_meta_data->>'name', NEW.email),
-    NEW.email,
-    NEW.raw_user_meta_data->>'first_name',
-    NEW.raw_user_meta_data->>'last_name'
-  )
-  ON CONFLICT (id) DO NOTHING;
+  -- Insert user profile; catch ANY error so auth.users INSERT never rolls back
+  BEGIN
+    INSERT INTO public.users (id, name, email, first_name, last_name)
+    VALUES (
+      NEW.id,
+      COALESCE(NEW.raw_user_meta_data->>'name', NEW.email),
+      NEW.email,
+      NEW.raw_user_meta_data->>'first_name',
+      NEW.raw_user_meta_data->>'last_name'
+    )
+    ON CONFLICT (id) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'handle_new_user: user insert failed: %', SQLERRM;
+  END;
+
   -- Default role: employee
-  INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'employee')
-  ON CONFLICT (user_id, role) DO NOTHING;
-  -- Default notification preferences
-  INSERT INTO public.notification_preferences (user_id) VALUES (NEW.id)
-  ON CONFLICT (user_id) DO NOTHING;
+  BEGIN
+    INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'employee')
+    ON CONFLICT (user_id, role) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'handle_new_user: role insert failed: %', SQLERRM;
+  END;
+
+  -- Default notification preferences (table may not exist in older schemas)
+  BEGIN
+    INSERT INTO public.notification_preferences (user_id) VALUES (NEW.id)
+    ON CONFLICT (user_id) DO NOTHING;
+  EXCEPTION WHEN OTHERS THEN
+    NULL; -- silently skip if table is missing or any other error
+  END;
+
   RETURN NEW;
 END;
 $$;
