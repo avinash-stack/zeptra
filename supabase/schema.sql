@@ -524,11 +524,14 @@ BEGIN
     NEW.email,
     NEW.raw_user_meta_data->>'first_name',
     NEW.raw_user_meta_data->>'last_name'
-  );
+  )
+  ON CONFLICT (id) DO NOTHING;
   -- Default role: employee
-  INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'employee');
+  INSERT INTO public.user_roles (user_id, role) VALUES (NEW.id, 'employee')
+  ON CONFLICT (user_id, role) DO NOTHING;
   -- Default notification preferences
-  INSERT INTO public.notification_preferences (user_id) VALUES (NEW.id);
+  INSERT INTO public.notification_preferences (user_id) VALUES (NEW.id)
+  ON CONFLICT (user_id) DO NOTHING;
   RETURN NEW;
 END;
 $$;
