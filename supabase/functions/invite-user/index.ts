@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
         if (!mgr || mgr.org_id !== callerProfile.org_id) throw new Error('Invalid manager_id');
       }
 
-      const allowed = [Deno.env.get('SITE_URL'),'http://localhost:5173','http://localhost:3000'];
+      const allowed = [Deno.env.get('SITE_URL'),'http://localhost:5173','http://localhost:3000','http://localhost:8080'];
       if (redirectTo && !allowed.some(o => o && redirectTo.startsWith(o))) throw new Error('Invalid redirect_to');
       if (!email || !email.includes("@")) throw new Error("Valid email is required");
       if (!name) throw new Error("Name is required");
