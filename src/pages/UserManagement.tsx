@@ -63,7 +63,17 @@ const getFunctionErrorMessage = async (error: unknown, fallback: string, functio
 };
 
 const invokeManageUser = async (body: ManageUserPayload) => {
-  const { data, error } = await supabase.functions.invoke('manage-user', { body });
+  if (!body.target_user_id) {
+    throw new Error('Missing user id for this action. Refresh the user list and try again.');
+  }
+
+  const requestBody = {
+    ...body,
+    user_id: body.target_user_id,
+    targetUserId: body.target_user_id,
+  };
+
+  const { data, error } = await supabase.functions.invoke('manage-user', { body: requestBody });
   if (error) {
     throw new Error(await getFunctionErrorMessage(error, 'User update failed'));
   }

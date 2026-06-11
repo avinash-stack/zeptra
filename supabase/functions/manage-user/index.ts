@@ -40,14 +40,30 @@ Deno.serve(async (req) => {
       return json(401, { error: "Missing bearer token" });
     }
 
-    const body = await req.json().catch(() => null);
-    if (!body) {
+    const rawBody = await req.json().catch(() => null);
+    if (!rawBody) {
       return json(400, { error: "Invalid request payload" });
     }
 
+    const body = (
+      typeof rawBody === "object" &&
+      rawBody !== null &&
+      "body" in rawBody &&
+      typeof rawBody.body === "object" &&
+      rawBody.body !== null &&
+      !("action" in rawBody)
+    ) ? rawBody.body as Record<string, unknown> : rawBody as Record<string, unknown>;
+
     const token = authHeader.replace("Bearer ", "");
     const action = String(body.action ?? "") as Action;
-    const targetUserId = String(body.target_user_id ?? "").trim();
+    const targetUserId = String(
+      body.target_user_id ??
+      body.targetUserId ??
+      body.user_id ??
+      body.userId ??
+      body.id ??
+      "",
+    ).trim();
     const email = String(body.email ?? "").trim().toLowerCase();
     const redirectTo = body.redirect_to ? String(body.redirect_to) : undefined;
 
