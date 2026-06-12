@@ -41,7 +41,6 @@ export function usePlanLimit(): PlanLimitState {
     setIsLoading(true);
 
     try {
-      // Fetch subscription for this org
       const { data: subData } = await supabase
         .from('subscriptions')
         .select('*')
@@ -51,28 +50,20 @@ export function usePlanLimit(): PlanLimitState {
       const sub = subData as Subscription | null;
       setSubscription(sub);
 
-      // Fetch plan limits for the current plan
       const currentPlan = sub?.plan || 'free';
-      const { data: limitData } = await supabase
-        .from('plan_limits')
-        .select('*')
-        .eq('plan', currentPlan)
-        .single();
+
+      const [
+        { data: limitData },
+        { count: uCount },
+        { data: eCount },
+      ] = await Promise.all([
+        supabase.from('plan_limits').select('*').eq('plan', currentPlan).single(),
+        supabase.from('users').select('id', { count: 'exact', head: true }).eq('org_id', orgId).eq('is_active', true),
+        supabase.rpc('org_expense_count_this_month', { _org_id: orgId }),
+      ]);
 
       setLimits(limitData as PlanLimit | null);
-
-      // Count users in this org
-      const { count: uCount } = await supabase
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .eq('org_id', orgId)
-        .eq('is_active', true);
-
       setUserCount(uCount || 0);
-
-      // Count expenses this month for this org's users
-      const { data: eCount } = await supabase
-        .rpc('org_expense_count_this_month', { _org_id: orgId });
       setExpenseCount(Number(eCount) || 0);
     } catch (err) {
       console.error('usePlanLimit fetch error:', err);

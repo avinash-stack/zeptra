@@ -84,7 +84,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loadUserData = useCallback(async (userId: string) => {
     try {
-      const profileData = await fetchProfile(userId);
+      const [profileData] = await Promise.all([
+        fetchProfile(userId),
+        fetchRoles(userId),
+        checkIsManager(userId),
+      ]);
 
       if (profileData && profileData.status === 'inactive') {
         toast.error('Your account has been deactivated');
@@ -94,8 +98,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return;
       }
 
-      await fetchRoles(userId);
-      await checkIsManager(userId);
       if (profileData?.org_id) {
         await fetchOrganization(profileData.org_id);
       } else {

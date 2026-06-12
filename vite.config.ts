@@ -13,6 +13,26 @@ export default defineConfig(() => ({
     },
   },
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (id.includes("@radix-ui")) return "radix";
+          if (id.includes("@supabase")) return "supabase";
+          if (id.includes("@tanstack")) return "query";
+          if (id.includes("lucide-react")) return "icons";
+          if (
+            id.includes("react-dom") ||
+            id.includes("react-router") ||
+            /\/node_modules\/react\//.test(id)
+          ) {
+            return "react-vendor";
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
