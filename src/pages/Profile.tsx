@@ -7,7 +7,13 @@ import { User, Mail, Building2, Shield } from 'lucide-react';
 const ProfilePage: React.FC = () => {
   const { profile, roles } = useAuth();
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

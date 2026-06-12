@@ -12,6 +12,7 @@ interface AuthContextType {
   roles: AppRole[];
   isManager: boolean;
   loading: boolean;
+  profileReady: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   hasRole: (role: AppRole) => boolean;
@@ -37,6 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [roles, setRoles] = useState<AppRole[]>([]);
   const [isManager, setIsManager] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [profileReady, setProfileReady] = useState(false);
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -81,22 +83,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loadUserData = useCallback(async (userId: string) => {
-    const profileData = await fetchProfile(userId);
-    
-    if (profileData && profileData.status === 'inactive') {
-      toast.error('Your account has been deactivated');
-      await supabase.auth.signOut();
-      setUser(null); setSession(null); setProfile(null);
-      setOrganization(null); setRoles([]); setIsManager(false);
-      return;
-    }
+    try {
+      const profileData = await fetchProfile(userId);
 
-    await fetchRoles(userId);
-    await checkIsManager(userId);
-    if (profileData?.org_id) {
-      await fetchOrganization(profileData.org_id);
-    } else {
-      setOrganization(null);
+      if (profileData && profileData.status === 'inactive') {
+        toast.error('Your account has been deactivated');
+        await supabase.auth.signOut();
+        setUser(null); setSession(null); setProfile(null);
+        setOrganization(null); setRoles([]); setIsManager(false);
+        return;
+      }
+
+      await fetchRoles(userId);
+      await checkIsManager(userId);
+      if (profileData?.org_id) {
+        await fetchOrganization(profileData.org_id);
+      } else {
+        setOrganization(null);
+      }
+    } finally {
+      setProfileReady(true);
     }
   }, []);
 
@@ -131,40 +137,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setLoading(false);
+      setProfileReady(true);
       return;
     }
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      setSession(s);
-      setUser(s?.user ?? null);
-      if (s?.user) {
-        loadUserData(s.user.id).finally(() => setLoading(false));
-      } else {
-        setLoading(false);
-      }
-    });
+    let initialised = false;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
+        if (event === 'INITIAL_SESSION') {
+          if (newSession?.user) {
+            await loadUserData(newSession.user.id);
+          } else {
+            setProfileReady(true);
+          }
+          setLoading(false);
+          initialised = true;
+          return;
+        }
+
         if (newSession?.user) {
-          setTimeout(() => {
-            loadUserData(newSession.user.id);
-          }, 500);
+          setProfileReady(false);
+          await loadUserData(newSession.user.id);
         } else {
           setProfile(null);
           setOrganization(null);
           setRoles([]);
           setIsManager(false);
+          setProfileReady(true);
         }
-        setLoading(false);
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
+    const fallbackTimer = window.setTimeout(() => {
+      if (!initialised) {
+        setLoading(false);
+        setProfileReady(true);
+      }
+    }, 8000);
+
+    return () => {
+      subscription.unsubscribe();
+      window.clearTimeout(fallbackTimer);
+    };
+  }, [loadUserData]);
 
   const signIn = async (email: string, password: string) => {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
@@ -176,11 +195,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isSupabaseConfigured) {
       setUser(null); setSession(null); setProfile(null);
       setOrganization(null); setRoles([]); setIsManager(false);
+      setProfileReady(true);
       return;
     }
     await supabase.auth.signOut();
     setUser(null); setSession(null); setProfile(null);
     setOrganization(null); setRoles([]); setIsManager(false);
+    setProfileReady(true);
   };
 
   const hasRole = (role: AppRole) => roles.includes(role);
@@ -189,7 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <AuthContext.Provider value={{
       user, session, profile, organization, roles, isManager,
-      loading, signIn, signOut, hasRole, hasAnyRole,
+      loading, profileReady, signIn, signOut, hasRole, hasAnyRole,
       refreshProfile, refreshOrg, reloadAll
     }}>
       {children}

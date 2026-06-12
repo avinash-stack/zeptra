@@ -63,9 +63,9 @@ const ProtectedRoute = ({ children, allowedRoles, requireManager }: {
   allowedRoles?: AppRole[];
   requireManager?: boolean;
 }) => {
-  const { user, loading, roles, isManager } = useAuth();
+  const { user, loading, profileReady, roles, isManager } = useAuth();
   
-  if (loading) {
+  if (loading || (user && !profileReady)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
