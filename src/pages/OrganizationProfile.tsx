@@ -318,6 +318,7 @@ const OrganizationProfile: React.FC = () => {
     }
 
     setInviteSending(false);
+    if (failedCount > 0) return;
     setStep(3);
   };
 

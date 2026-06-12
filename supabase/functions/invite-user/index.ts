@@ -171,9 +171,12 @@ Deno.serve(async (req) => {
       );
       if (profileError) throw new Error(profileError.message);
 
-      await admin.from("user_roles").delete().eq("user_id", invitedUserId);
-      const { error: insertRoleError } = await admin.from("user_roles").insert({ user_id: invitedUserId, role });
-      if (insertRoleError) throw new Error(insertRoleError.message);
+      const { error: roleError } = await admin
+        .from("user_roles")
+        .upsert({ user_id: invitedUserId, role }, { onConflict: "user_id,role" });
+      if (roleError) throw new Error(roleError.message);
+
+      await admin.from("user_roles").delete().eq("user_id", invitedUserId).neq("role", role);
 
       const emailHtml = `
 <!DOCTYPE html>

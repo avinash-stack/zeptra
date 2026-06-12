@@ -441,7 +441,19 @@ const UserManagement: React.FC = () => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map(u => (
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8">
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                    No users found. Click "+ Invite" to add team members.
+                  </TableCell>
+                </TableRow>
+              ) : filtered.map(u => (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium">{u.name}</TableCell>
                   <TableCell>{u.email}</TableCell>
