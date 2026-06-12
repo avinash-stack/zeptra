@@ -125,9 +125,7 @@ Deno.serve(async (req) => {
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     const fromEmail = Deno.env.get("RESEND_FROM_EMAIL");
-    if (!resendApiKey || !fromEmail) {
-      return json(500, { error: "Missing RESEND_API_KEY or RESEND_FROM_EMAIL in function environment" });
-    }
+    const useResend = !!(resendApiKey && fromEmail);
 
     const results = await Promise.allSettled(invites.map(async (invite: any) => {
       const email = String(invite.email ?? "").trim().toLowerCase();
@@ -149,36 +147,27 @@ Deno.serve(async (req) => {
       if (!validRoles.has(role)) throw new Error(`Invalid role: ${role}`);
       if (!isAdmin && role === "admin") throw new Error("Only admin users can assign the admin role");
 
-      const inviteOptions: { data?: { name: string }; redirectTo?: string } = { data: { name } };
-      if (redirectTo) inviteOptions.redirectTo = redirectTo;
+      let invitedUserId: string | undefined;
 
-      const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
-        type: 'invite',
-        email,
-        options: inviteOptions,
-      });
+      if (useResend) {
+        // --- Path A: generateLink + custom Resend email ---
+        const inviteOptions: { data?: { name: string }; redirectTo?: string } = { data: { name } };
+        if (redirectTo) inviteOptions.redirectTo = redirectTo;
 
-      if (linkError) throw new Error(linkError.message);
+        const { data: linkData, error: linkError } = await admin.auth.admin.generateLink({
+          type: 'invite',
+          email,
+          options: inviteOptions,
+        });
 
-      const invitedUserId = linkData.user?.id;
-      const actionLink = linkData.properties?.action_link;
+        if (linkError) throw new Error(linkError.message);
 
-      if (!invitedUserId || !actionLink) throw new Error("Invite succeeded but failed to generate action link");
+        invitedUserId = linkData.user?.id;
+        const actionLink = linkData.properties?.action_link;
 
-      const { error: profileError } = await admin.from("users").upsert(
-        { id: invitedUserId, org_id: callerProfile.org_id, name, email, manager_id: managerId, tag, status: "active", is_active: true },
-        { onConflict: "id" },
-      );
-      if (profileError) throw new Error(profileError.message);
+        if (!invitedUserId || !actionLink) throw new Error("Invite succeeded but failed to generate action link");
 
-      const { error: roleError } = await admin
-        .from("user_roles")
-        .upsert({ user_id: invitedUserId, role }, { onConflict: "user_id,role" });
-      if (roleError) throw new Error(roleError.message);
-
-      await admin.from("user_roles").delete().eq("user_id", invitedUserId).neq("role", role);
-
-      const emailHtml = `
+        const emailHtml = `
 <!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -193,7 +182,7 @@ Deno.serve(async (req) => {
         <p style="margin:0 0 24px;color:#4b5563;font-size:16px;line-height:1.5;">
           <strong>${esc(inviterName)}</strong> has invited you to join <strong>${esc(orgName)}</strong> as a <strong>${esc(role)}</strong> on Zeptra.
         </p>
-        <a href="${esc(actionLink)}" style="display:inline-block;background:#3B82F6;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation & Set Password</a>
+        <a href="${esc(actionLink)}" style="display:inline-block;background:#3B82F6;color:#ffffff;text-decoration:none;padding:12px 24px;border-radius:6px;font-weight:600;font-size:16px;">Accept Invitation &amp; Set Password</a>
         <p style="margin:24px 0 0;color:#9ca3af;font-size:14px;">This link expires in 24 hours.</p>
       </div>
       <div style="padding:16px 32px;border-top:1px solid #e5e7eb;background:#f9fafb;">
@@ -204,18 +193,44 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-      const resendRes = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          from: fromEmail,
-          to: [email],
-          subject: `You've been invited to join ${orgName} on Zeptra`,
-          html: emailHtml,
-        }),
-      });
+        const resendRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [email],
+            subject: `You've been invited to join ${orgName} on Zeptra`,
+            html: emailHtml,
+          }),
+        });
 
-      if (!resendRes.ok) throw new Error("User was created, but invitation email failed to send.");
+        if (!resendRes.ok) throw new Error("User was created, but invitation email failed to send.");
+      } else {
+        // --- Path B: Supabase built-in invite (uses SMTP configured in Auth settings) ---
+        const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
+          data: { name },
+          redirectTo,
+        });
+
+        if (inviteError) throw new Error(inviteError.message);
+        invitedUserId = inviteData.user?.id;
+        if (!invitedUserId) throw new Error("Invite succeeded but no user ID returned");
+      }
+
+      // --- Common: upsert profile and set role (runs for both paths) ---
+      const { error: profileError } = await admin.from("users").upsert(
+        { id: invitedUserId, org_id: callerProfile.org_id, name, email, manager_id: managerId, tag, status: "active", is_active: true },
+        { onConflict: "id" },
+      );
+      if (profileError) throw new Error(profileError.message);
+
+      const { error: roleError } = await admin
+        .from("user_roles")
+        .upsert({ user_id: invitedUserId, role }, { onConflict: "user_id,role" });
+      if (roleError) throw new Error(roleError.message);
+
+      await admin.from("user_roles").delete().eq("user_id", invitedUserId).neq("role", role);
+
       return { success: true, email };
     }));
 
