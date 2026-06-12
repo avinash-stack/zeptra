@@ -145,6 +145,7 @@ Deno.serve(async (req) => {
         Deno.env.get("SITE_URL"),
         "http://localhost:5173",
         "http://localhost:3000",
+        "http://localhost:8080",
       ];
       if (redirectTo && !allowedRedirectOrigins.some((origin) => origin && redirectTo.startsWith(origin))) {
         return json(400, { error: "Invalid redirect_to" });
