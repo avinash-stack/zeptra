@@ -343,7 +343,7 @@ const SubmitExpense: React.FC = () => {
         throw new Error('No approver is assigned to your profile. Ask HR or an admin to set your manager before submitting an expense.');
       }
 
-      const { error } = await supabase.from('expenses').insert({
+      const { data: inserted, error } = await supabase.from('expenses').insert({
         user_id: user.id,
         amount: parseFloat(data.amount),
         currency: data.currency || 'INR',
@@ -362,9 +362,16 @@ const SubmitExpense: React.FC = () => {
           total_gst: totalGst ? parseFloat(totalGst) : null,
           hsn_codes: hsnCodes.length ? hsnCodes : null,
         } : null,
-      });
+      })
+        .select('id')
+        .single();
 
-      if (error) throw error;
+      if (error || !inserted) throw error ?? new Error('Insert failed');
+
+      // Fire-and-forget notification — never block or fail the submission
+      supabase.functions.invoke('send-notification', {
+        body: { event: 'submitted', expense_id: inserted.id }
+      }).catch(err => console.error('Notification failed:', err));
 
       toast.success('Expense submitted successfully!');
       reset();

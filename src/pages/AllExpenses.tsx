@@ -28,20 +28,32 @@ const AllExpenses: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [rejectExpense, setRejectExpense] = useState<ExpenseWithDetails | null>(null);
   const [rejectComment, setRejectComment] = useState('');
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 50;
 
   useEffect(() => {
     fetchExpenses();
-  }, [statusFilter]);
+  }, [statusFilter, page]);
 
   const fetchExpenses = async () => {
+    setLoading(true);
     let query = supabase
       .from('expenses')
-      .select('*, expense_categories(name, gl_code)')
+      .select('*, expense_categories(name, gl_code)', { count: 'exact' })
       .order('submitted_at', { ascending: false });
 
     if (statusFilter !== 'all') query = query.eq('status', statusFilter);
 
-    const { data } = await query;
+    const { data, error, count } = await query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+    if (error) {
+      console.error('Failed to fetch expenses:', error);
+      setLoading(false);
+      return;
+    }
+
+    setTotalCount(count ?? 0);
 
     if (data && data.length > 0) {
       // Enrich with submitter names from public.users
@@ -60,6 +72,36 @@ const AllExpenses: React.FC = () => {
       setExpenses([]);
     }
     setLoading(false);
+  };
+
+  const fetchAllForExport = async (): Promise<ExpenseWithDetails[]> => {
+    const all: any[] = [];
+    let from = 0;
+    const BATCH = 1000;
+    while (true) {
+      let q = supabase
+        .from('expenses')
+        .select('*, expense_categories(name, gl_code)')
+        .order('submitted_at', { ascending: false })
+        .range(from, from + BATCH - 1);
+      if (statusFilter !== 'all') q = q.eq('status', statusFilter);
+      const { data, error } = await q;
+      if (error || !data?.length) break;
+      all.push(...data);
+      if (data.length < BATCH) break;
+      from += BATCH;
+    }
+    // Enrich with submitter names
+    if (all.length > 0) {
+      const userIds = [...new Set(all.map(e => e.user_id))];
+      const { data: profiles } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .in('id', userIds);
+      const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+      return all.map(e => ({ ...e, users: profileMap.get(e.user_id) || null })) as ExpenseWithDetails[];
+    }
+    return [];
   };
 
   const filtered = expenses.filter(e =>
@@ -158,20 +200,24 @@ const AllExpenses: React.FC = () => {
     }
   };
 
-  const handleExportCSV = () => {
-    if (!expenses.length) { toast.error('No expenses to export'); return; }
-    exportToCSV(expenses, organization?.name || 'Zeptra');
-    toast.success(`Exported ${expenses.length} expenses as CSV`);
+  const handleExportCSV = async () => {
+    toast.info('Preparing export…');
+    const allExpenses = await fetchAllForExport();
+    if (!allExpenses.length) { toast.error('No expenses to export'); return; }
+    exportToCSV(allExpenses, organization?.name || 'Zeptra');
+    toast.success(`Exported ${allExpenses.length} expenses as CSV`);
     if (user && organization) {
       logExport({ org_id: organization.id, actor_id: user.id,
-        export_type: 'csv', record_count: expenses.length });
+        export_type: 'csv', record_count: allExpenses.length });
     }
   };
 
-  const handleExportTally = () => {
-    const approved = expenses.filter(e => e.status === 'approved');
+  const handleExportTally = async () => {
+    toast.info('Preparing export…');
+    const allExpenses = await fetchAllForExport();
+    const approved = allExpenses.filter(e => e.status === 'approved');
     if (!approved.length) { toast.error('No approved expenses to export for Tally'); return; }
-    exportToTallyXML(expenses, organization?.name || 'Zeptra');
+    exportToTallyXML(allExpenses, organization?.name || 'Zeptra');
     toast.success(`Exported ${approved.length} approved expenses as Tally XML`);
     if (user && organization) {
       logExport({ org_id: organization.id, actor_id: user.id,
@@ -211,9 +257,9 @@ const AllExpenses: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search..." className="pl-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <Input placeholder="Search..." className="pl-9" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }} />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
@@ -309,6 +355,25 @@ const AllExpenses: React.FC = () => {
                 ))}
               </TableBody>
             </Table>
+          </div>
+          <div className="flex items-center justify-between mt-4 px-1">
+            <p className="text-sm text-muted-foreground">
+              {totalCount > 0
+                ? `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, totalCount)} of ${totalCount}`
+                : 'No expenses found'}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm"
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 0 || loading}>
+                ← Previous
+              </Button>
+              <Button variant="outline" size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={(page + 1) * PAGE_SIZE >= totalCount || loading}>
+                Next →
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

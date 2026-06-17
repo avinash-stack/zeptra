@@ -21,6 +21,9 @@ const MyExpenses: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 20;
   const [editingExpense, setEditingExpense] = useState<ExpenseWithDetails | null>(null);
   const [editAmount, setEditAmount] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -33,27 +36,27 @@ const MyExpenses: React.FC = () => {
         if (data) setCategories(data as ExpenseCategory[]);
       });
     }
-  }, [user, statusFilter, profile?.org_id]);
+  }, [user, statusFilter, page, profile?.org_id]);
 
   const fetchExpenses = async () => {
     if (!user) return;
     setLoading(true);
     let query = supabase
       .from('expenses')
-      .select('*, expense_categories(name)')
+      .select('*, expense_categories(name)', { count: 'exact' })
       .eq('user_id', user.id)
-      .order('submitted_at', { ascending: false })
-      .range(0, 99);
+      .order('submitted_at', { ascending: false });
 
     if (statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
     if (error) {
       console.error('Error fetching expenses:', error);
       toast.error('Failed to load expenses');
     }
+    setTotalCount(count ?? 0);
     setExpenses((data as ExpenseWithDetails[]) || []);
     setLoading(false);
   };
@@ -113,9 +116,9 @@ const MyExpenses: React.FC = () => {
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search expenses..." className="pl-9" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <Input placeholder="Search expenses..." className="pl-9" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }} />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(0); }}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
@@ -182,6 +185,25 @@ const MyExpenses: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+          </div>
+          <div className="flex items-center justify-between mt-4 px-1">
+            <p className="text-sm text-muted-foreground">
+              {totalCount > 0
+                ? `Showing ${page * PAGE_SIZE + 1}–${Math.min((page + 1) * PAGE_SIZE, totalCount)} of ${totalCount}`
+                : 'No expenses found'}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm"
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 0 || loading}>
+                ← Previous
+              </Button>
+              <Button variant="outline" size="sm"
+                onClick={() => setPage(p => p + 1)}
+                disabled={(page + 1) * PAGE_SIZE >= totalCount || loading}>
+                Next →
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
