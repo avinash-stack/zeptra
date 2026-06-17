@@ -148,6 +148,7 @@ Deno.serve(async (req) => {
       if (!isAdmin && role === "admin") throw new Error("Only admin users can assign the admin role");
 
       let invitedUserId: string | undefined;
+      let actionLink: string | undefined;
 
       if (useResend) {
         // --- Path A: generateLink + custom Resend email ---
@@ -163,10 +164,37 @@ Deno.serve(async (req) => {
         if (linkError) throw new Error(linkError.message);
 
         invitedUserId = linkData.user?.id;
-        const actionLink = linkData.properties?.action_link;
+        actionLink = linkData.properties?.action_link;
 
         if (!invitedUserId || !actionLink) throw new Error("Invite succeeded but failed to generate action link");
+      } else {
+        // --- Path B: Supabase built-in invite (uses SMTP configured in Auth settings) ---
+        const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
+          data: { name },
+          redirectTo,
+        });
 
+        if (inviteError) throw new Error(inviteError.message);
+        invitedUserId = inviteData.user?.id;
+        if (!invitedUserId) throw new Error("Invite succeeded but no user ID returned");
+      }
+
+      // --- Upsert profile and set role BEFORE sending email ---
+      const { error: profileError } = await admin.from("users").upsert(
+        { id: invitedUserId, org_id: callerProfile.org_id, name, email, manager_id: managerId, tag, status: "active", is_active: true },
+        { onConflict: "id" },
+      );
+      if (profileError) throw new Error(profileError.message);
+
+      const { error: roleError } = await admin
+        .from("user_roles")
+        .upsert({ user_id: invitedUserId, role }, { onConflict: "user_id,role" });
+      if (roleError) throw new Error(roleError.message);
+
+      await admin.from("user_roles").delete().eq("user_id", invitedUserId).neq("role", role);
+
+      // --- Send invite email (Resend path only, non-fatal) ---
+      if (useResend && actionLink) {
         const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -193,43 +221,27 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
-        const resendRes = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            from: fromEmail,
-            to: [email],
-            subject: `You've been invited to join ${orgName} on Zeptra`,
-            html: emailHtml,
-          }),
-        });
+        try {
+          const resendRes = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${resendApiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              from: fromEmail,
+              to: [email],
+              subject: `You've been invited to join ${orgName} on Zeptra`,
+              html: emailHtml,
+            }),
+          });
 
-        if (!resendRes.ok) throw new Error("User was created, but invitation email failed to send.");
-      } else {
-        // --- Path B: Supabase built-in invite (uses SMTP configured in Auth settings) ---
-        const { data: inviteData, error: inviteError } = await admin.auth.admin.inviteUserByEmail(email, {
-          data: { name },
-          redirectTo,
-        });
-
-        if (inviteError) throw new Error(inviteError.message);
-        invitedUserId = inviteData.user?.id;
-        if (!invitedUserId) throw new Error("Invite succeeded but no user ID returned");
+          if (!resendRes.ok) {
+            console.error(`Resend email failed for ${email}: HTTP ${resendRes.status}`);
+            return { success: true, email, warning: "User created but invite email failed to send" };
+          }
+        } catch (emailErr) {
+          console.error(`Resend email error for ${email}:`, emailErr);
+          return { success: true, email, warning: "User created but invite email failed to send" };
+        }
       }
-
-      // --- Common: upsert profile and set role (runs for both paths) ---
-      const { error: profileError } = await admin.from("users").upsert(
-        { id: invitedUserId, org_id: callerProfile.org_id, name, email, manager_id: managerId, tag, status: "active", is_active: true },
-        { onConflict: "id" },
-      );
-      if (profileError) throw new Error(profileError.message);
-
-      const { error: roleError } = await admin
-        .from("user_roles")
-        .upsert({ user_id: invitedUserId, role }, { onConflict: "user_id,role" });
-      if (roleError) throw new Error(roleError.message);
-
-      await admin.from("user_roles").delete().eq("user_id", invitedUserId).neq("role", role);
 
       return { success: true, email };
     }));

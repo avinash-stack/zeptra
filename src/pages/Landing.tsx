@@ -22,7 +22,7 @@ const Landing: React.FC = () => {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
-            <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
+            {/* <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a> */}
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
@@ -47,7 +47,7 @@ const Landing: React.FC = () => {
           <div className="md:hidden border-t border-border bg-background px-4 py-4 space-y-4 shadow-lg">
             <a href="#features" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Features</a>
             <a href="#how-it-works" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>How it works</a>
-            <a href="#pricing" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
+            {/* <a href="#pricing" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Pricing</a> */}
             <div className="pt-4 flex flex-col gap-2">
               <Button variant="outline" asChild className="w-full">
                 <Link to="/login">Login</Link>
@@ -261,7 +261,7 @@ const Landing: React.FC = () => {
           </div>
         </section>
 
-        {/* 6. PRICING TEASER */}
+        {/* 6. PRICING TEASER — hidden for now
         <section id="pricing" className="py-24 bg-muted/40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -331,6 +331,7 @@ const Landing: React.FC = () => {
             </div>
           </div>
         </section>
+        */}
 
         {/* 7. FINAL CTA SECTION */}
         <section className="py-24 px-4 sm:px-6 lg:px-8">

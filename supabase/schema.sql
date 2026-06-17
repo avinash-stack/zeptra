@@ -607,15 +607,21 @@ BEGIN
   INSERT INTO public.org_currencies (org_id, code, symbol, name, is_default) VALUES
     (_org_id, 'USD', '$', 'US Dollar', true);
 
-  -- Determine initial subscription plan
+  -- Determine initial subscription plan (safe if plan_overrides missing)
   SELECT email INTO _creator_email FROM public.users WHERE id = _uid;
-  SELECT plan INTO _override_plan FROM public.plan_overrides WHERE email = _creator_email;
+  BEGIN
+    SELECT plan INTO _override_plan FROM public.plan_overrides WHERE email = _creator_email;
+  EXCEPTION WHEN undefined_table THEN
+    _override_plan := NULL;
+  END;
 
   -- Seed a subscription for the new org
   INSERT INTO public.subscriptions (org_id, plan, status)
   VALUES (_org_id, COALESCE(_override_plan, 'free'), 'active');
 
   RETURN _org_id;
+EXCEPTION WHEN OTHERS THEN
+  RAISE EXCEPTION 'Organization creation failed: %', SQLERRM;
 END;
 $$;
 

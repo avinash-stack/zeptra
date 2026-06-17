@@ -69,37 +69,38 @@ const Dashboard: React.FC = () => {
   const fetchStats = async () => {
     if (!user) return;
     try {
-      let query;
-      if (hasAnyRole(['admin', 'finance'])) {
-        query = supabase.from('expenses').select('*, expense_categories(name)').limit(1000);
+      const startDate = getStartDate();
+
+      if (hasAnyRole(['admin', 'finance']) && profile?.org_id) {
+        // --- Admin/Finance: single RPC, all aggregation on the server ---
+        const { data, error } = await supabase.rpc('get_dashboard_stats', {
+          p_org_id: profile.org_id,
+          p_start_date: startDate ?? null,
+        });
+        if (error) throw error;
+
+        setStats({
+          total: Number(data?.total ?? 0),
+          totalAmount: Number(data?.totalAmount ?? 0),
+          pending: Number(data?.pending ?? 0),
+          approved: Number(data?.approved ?? 0),
+          rejected: Number(data?.rejected ?? 0),
+          flagged: Number(data?.flagged ?? 0),
+        });
+        setMonthlyData(data?.byMonth ?? []);
+        setAllExpenses([]);
       } else {
-        query = supabase.from('expenses').select('*').limit(1000);
+        // --- Employee / Manager: personal expenses only ---
+        let query = supabase.from('expenses').select('*').limit(1000);
         if (isManager) {
           query = query.or(`user_id.eq.${user.id},current_approver_id.eq.${user.id}`);
         } else {
           query = query.eq('user_id', user.id);
         }
-      }
 
-      const startDate = getStartDate();
-      if (hasAnyRole(['admin', 'finance']) && startDate) {
-        query = query.gte('submitted_at', startDate);
-      }
+        const { data: rawExpenses } = await query;
+        const expenses = rawExpenses || [];
 
-      const { data: rawExpenses } = await query;
-      let expenses = rawExpenses || [];
-      
-      if (hasAnyRole(['admin', 'finance']) && expenses.length > 0) {
-        const userIds = [...new Set(expenses.map((e: any) => e.user_id))];
-        const { data: profiles } = await supabase.from('users').select('id, name').in('id', userIds);
-        const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
-        expenses = expenses.map((e: any) => ({
-          ...e,
-          users: profileMap.get(e.user_id) || null,
-        }));
-      }
-      
-      if (expenses) {
         setAllExpenses(expenses);
         const total = expenses.length;
         const approved = expenses.filter(e => e.status === 'approved').length;
@@ -112,7 +113,6 @@ const Dashboard: React.FC = () => {
         ).length;
         setStats({ total, approved, pending, rejected, totalAmount, flagged });
 
-        // Monthly data
         const months: Record<string, number> = {};
         expenses.forEach(e => {
           const month = new Date(e.submitted_at).toLocaleString('default', { month: 'short' });
@@ -122,6 +122,7 @@ const Dashboard: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+      toast.error('Failed to load dashboard data');
     } finally {
       setLoading(false);
     }

@@ -218,15 +218,16 @@ const OrganizationProfile: React.FC = () => {
         _business_phone: form.businessPhone.trim() || null,
       });
 
-      if (orgError) {
+      if (orgError || !newOrgId) {
         console.error("create_organization RPC error:", orgError);
-        toast.error("Organization creation failed: " + orgError.message);
-        const { error: promoteError } = await supabase.rpc("promote_to_admin");
-        if (promoteError) console.warn("promote_to_admin also failed:", promoteError.message);
-      } else {
-        setOrgId(newOrgId as string);
-        console.log("Organization created with ID:", newOrgId);
+        toast.error(
+          orgError?.message || "Failed to create organization. Please try again."
+        );
+        return;
       }
+
+      setOrgId(newOrgId as string);
+      console.log("Organization created with ID:", newOrgId);
 
       await reloadAll();
       toast.success("Organization created successfully!");
