@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import type { Profile, AppRole, Organization } from '@/types/database';
@@ -40,58 +40,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
 
-  // ── Data-fetching helpers (unchanged from original) ──────────────
+  // ── Staleness counter ────────────────────────────────────────────
+  // Every loadUserData call increments this. When a call finishes,
+  // it only writes state if its snapshot still matches the current
+  // value — meaning no NEWER call was started while it was in flight.
+  // This is NOT a blocking guard: every call runs fully to completion
+  // (no dropping). It just prevents an older, stale result from
+  // overwriting a newer one. This solves the race where
+  // onAuthStateChange fires loadUserData (fetching pre-org-creation
+  // data) concurrently with reloadAll's loadUserData (fetching
+  // post-org-creation data) — whichever STARTED last wins.
+  const loadGeneration = useRef(0);
 
-  const fetchProfile = async (userId: string) => {
+  // ── Data-fetching helpers (pure fetchers — no state writes) ──────
+
+  const fetchProfileData = async (userId: string): Promise<Profile | null> => {
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('id', userId)
       .single();
     if (error) console.error('fetchProfile error:', error.message);
-    const p = data as Profile | null;
-    setProfile(p);
-    return p;
+    return (data as Profile | null);
   };
 
-  const fetchRoles = async (userId: string) => {
+  const fetchRolesData = async (userId: string): Promise<AppRole[]> => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', userId);
     if (error) console.error('fetchRoles error:', error.message);
-    const fetchedRoles = (data as { role: AppRole }[] | null)?.map(r => r.role) || [];
-    setRoles(fetchedRoles);
-    return fetchedRoles;
+    return (data as { role: AppRole }[] | null)?.map(r => r.role) || [];
   };
 
-  const fetchOrganization = async (orgId: string) => {
+  const fetchOrganizationData = async (orgId: string): Promise<Organization | null> => {
     const { data, error } = await supabase
       .from('organizations')
       .select('*')
       .eq('id', orgId)
       .single();
     if (error) console.error('fetchOrg error:', error.message);
-    setOrganization(data as Organization | null);
+    return (data as Organization | null);
   };
 
-  const checkIsManager = async (userId: string) => {
+  const checkIsManagerData = async (userId: string): Promise<boolean> => {
     const { data } = await supabase
       .from('users')
       .select('id')
       .eq('manager_id', userId)
       .limit(1);
-    setIsManager((data && data.length > 0) || false);
+    return (data && data.length > 0) || false;
   };
 
-  // ── Core loader — NO ref guard, every call runs to completion ────
+  // ── Core loader ──────────────────────────────────────────────────
+  // Every call runs fully. No call is ever dropped or skipped.
+  // The generation counter ensures only the LATEST call's results
+  // are written to state — older concurrent calls become no-ops
+  // at the write step (not at the fetch step).
 
   const loadUserData = useCallback(async (userId: string) => {
-    const [profileData] = await Promise.all([
-      fetchProfile(userId),
-      fetchRoles(userId),
-      checkIsManager(userId),
+    const myGeneration = ++loadGeneration.current;
+
+    // Fetch profile, roles, manager status in parallel
+    const [profileData, fetchedRoles, managerFlag] = await Promise.all([
+      fetchProfileData(userId),
+      fetchRolesData(userId),
+      checkIsManagerData(userId),
     ]);
+
+    // Stale check: a newer loadUserData was started while we were fetching
+    if (myGeneration !== loadGeneration.current) {
+      return; // discard stale results — a fresher call will write state
+    }
 
     // Inactive account → sign out and clear everything
     if (profileData && profileData.status === 'inactive') {
@@ -108,9 +128,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    // Fetch org if present, otherwise clear it
+    // Write profile, roles, manager
+    setProfile(profileData);
+    setRoles(fetchedRoles);
+    setIsManager(managerFlag);
+
+    // Fetch org if present
     if (profileData?.org_id) {
-      await fetchOrganization(profileData.org_id);
+      const orgData = await fetchOrganizationData(profileData.org_id);
+
+      // Stale check again after the org fetch
+      if (myGeneration !== loadGeneration.current) {
+        return;
+      }
+
+      setOrganization(orgData);
     } else {
       setOrganization(null);
     }
@@ -123,15 +155,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async () => {
     if (user) {
-      const p = await fetchProfile(user.id);
-      if (p?.org_id) await fetchOrganization(p.org_id);
+      const p = await fetchProfileData(user.id);
+      setProfile(p);
+      if (p?.org_id) {
+        const orgData = await fetchOrganizationData(p.org_id);
+        setOrganization(orgData);
+      }
     }
   };
 
   const refreshOrg = async () => {
     if (user) {
-      const p = await fetchProfile(user.id);
-      if (p?.org_id) await fetchOrganization(p.org_id);
+      const p = await fetchProfileData(user.id);
+      setProfile(p);
+      if (p?.org_id) {
+        const orgData = await fetchOrganizationData(p.org_id);
+        setOrganization(orgData);
+      }
     }
   };
 
@@ -191,6 +231,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // ── SIGNED_OUT: clear everything, no data fetch ──
         if (event === 'SIGNED_OUT') {
+          loadGeneration.current++; // invalidate any in-flight loads
           setUser(null);
           setSession(null);
           setProfile(null);
