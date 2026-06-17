@@ -339,8 +339,35 @@ const SubmitExpense: React.FC = () => {
         .select('manager_id')
         .eq('id', user.id)
         .single();
-      if (!profileData?.manager_id) {
-        throw new Error('No approver is assigned to your profile. Ask HR or an admin to set your manager before submitting an expense.');
+
+      let approverId: string | null = profileData?.manager_id || null;
+
+      if (!approverId) {
+        const { data: financeRoles } = await supabase
+          .from('user_roles')
+          .select('user_id')
+          .eq('role', 'finance');
+
+        const financeUserIds = financeRoles?.map(r => r.user_id) || [];
+
+        if (financeUserIds.length > 0) {
+          const { data: financeUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('org_id', profile!.org_id)
+            .eq('is_active', true)
+            .in('id', financeUserIds)
+            .limit(1)
+            .maybeSingle();
+
+          approverId = financeUser?.id || null;
+        }
+
+        if (!approverId) {
+          toast.error('No manager or finance approver available. Please contact your admin.');
+          setLoading(false);
+          return;
+        }
       }
 
       const { data: inserted, error } = await supabase.from('expenses').insert({
@@ -351,7 +378,7 @@ const SubmitExpense: React.FC = () => {
         description: data.description,
         receipt_url: finalReceiptUrl,
         status: 'pending_l1',
-        current_approver_id: profileData.manager_id,
+        current_approver_id: approverId,
         submitted_at: new Date(`${data.expenseDate}T12:00:00`).toISOString(),
         is_policy_exception: isPolicyException,
         gst_details: data.gstNumber || cgst || sgst || igst ? {

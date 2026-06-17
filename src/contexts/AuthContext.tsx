@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import type { Profile, AppRole, Organization } from '@/types/database';
@@ -82,7 +82,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsManager((data && data.length > 0) || false);
   };
 
+  const lastLoadedUserId = useRef<string | null>(null);
+  const isLoadingUserData = useRef(false);
+
   const loadUserData = useCallback(async (userId: string) => {
+    // Skip if already loaded for this exact user
+    if (lastLoadedUserId.current === userId && !isLoadingUserData.current) {
+      return;
+    }
+    // A load is already in flight — don't stack another
+    if (isLoadingUserData.current) {
+      return;
+    }
+
+    isLoadingUserData.current = true;
     try {
       const [profileData] = await Promise.all([
         fetchProfile(userId),
@@ -95,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await supabase.auth.signOut();
         setUser(null); setSession(null); setProfile(null);
         setOrganization(null); setRoles([]); setIsManager(false);
+        lastLoadedUserId.current = null;
         return;
       }
 
@@ -103,8 +117,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setOrganization(null);
       }
+
+      lastLoadedUserId.current = userId;
     } finally {
+      isLoadingUserData.current = false;
       setProfileReady(true);
+      setLoading(false);
     }
   }, []);
 
@@ -124,6 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const reloadAll = useCallback(async () => {
     const currentUser = user;
+    // Force a fresh load by clearing the guard
+    lastLoadedUserId.current = null;
     if (!currentUser) {
       const { data: { session: s } } = await supabase.auth.getSession();
       if (s?.user) {
@@ -143,47 +163,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    let initialised = false;
+    let mounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    // Actively restore session on mount — don't wait passively
+    const initAuth = async () => {
+      const { data: { session: existingSession } } =
+        await supabase.auth.getSession();
+
+      if (mounted && existingSession?.user) {
+        setSession(existingSession);
+        setUser(existingSession.user);
+        await loadUserData(existingSession.user.id);
+      } else if (mounted) {
+        setLoading(false);
+        setProfileReady(true);
+      }
+    };
+
+    initAuth();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
-        setSession(newSession);
-        setUser(newSession?.user ?? null);
+        if (!mounted) return;
 
-        if (event === 'INITIAL_SESSION') {
-          if (newSession?.user) {
-            await loadUserData(newSession.user.id);
-          } else {
-            setProfileReady(true);
-          }
-          setLoading(false);
-          initialised = true;
-          return;
-        }
-
-        if (newSession?.user) {
-          setProfileReady(false);
-          await loadUserData(newSession.user.id);
-        } else {
+        if (event === 'SIGNED_OUT') {
+          lastLoadedUserId.current = null;
+          setUser(null);
+          setSession(null);
           setProfile(null);
           setOrganization(null);
           setRoles([]);
           setIsManager(false);
           setProfileReady(true);
+          setLoading(false);
+          return;
+        }
+
+        if (newSession?.user) {
+          const isNewUser = lastLoadedUserId.current !== newSession.user.id;
+          if (isNewUser) {
+            setProfileReady(false);
+          }
+          setSession(newSession);
+          setUser(newSession.user);
+          await loadUserData(newSession.user.id);
         }
       }
     );
 
-    const fallbackTimer = window.setTimeout(() => {
-      if (!initialised) {
-        setLoading(false);
-        setProfileReady(true);
-      }
-    }, 8000);
-
     return () => {
-      subscription.unsubscribe();
-      window.clearTimeout(fallbackTimer);
+      mounted = false;
+      authListener.subscription.unsubscribe();
     };
   }, [loadUserData]);
 
