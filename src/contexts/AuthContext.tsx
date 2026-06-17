@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { isSupabaseConfigured, supabase } from '@/integrations/supabase/client';
 import type { Profile, AppRole, Organization } from '@/types/database';
@@ -39,6 +39,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isManager, setIsManager] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
+
+  // ── Data-fetching helpers (unchanged from original) ──────────────
 
   const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
@@ -82,49 +84,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsManager((data && data.length > 0) || false);
   };
 
-  const lastLoadedUserId = useRef<string | null>(null);
-  const isLoadingUserData = useRef(false);
+  // ── Core loader — NO ref guard, every call runs to completion ────
 
   const loadUserData = useCallback(async (userId: string) => {
-    // Skip if already loaded for this exact user
-    if (lastLoadedUserId.current === userId && !isLoadingUserData.current) {
-      return;
-    }
-    // A load is already in flight — don't stack another
-    if (isLoadingUserData.current) {
-      return;
-    }
+    const [profileData] = await Promise.all([
+      fetchProfile(userId),
+      fetchRoles(userId),
+      checkIsManager(userId),
+    ]);
 
-    isLoadingUserData.current = true;
-    try {
-      const [profileData] = await Promise.all([
-        fetchProfile(userId),
-        fetchRoles(userId),
-        checkIsManager(userId),
-      ]);
-
-      if (profileData && profileData.status === 'inactive') {
-        toast.error('Your account has been deactivated');
-        await supabase.auth.signOut();
-        setUser(null); setSession(null); setProfile(null);
-        setOrganization(null); setRoles([]); setIsManager(false);
-        lastLoadedUserId.current = null;
-        return;
-      }
-
-      if (profileData?.org_id) {
-        await fetchOrganization(profileData.org_id);
-      } else {
-        setOrganization(null);
-      }
-
-      lastLoadedUserId.current = userId;
-    } finally {
-      isLoadingUserData.current = false;
+    // Inactive account → sign out and clear everything
+    if (profileData && profileData.status === 'inactive') {
+      toast.error('Your account has been deactivated');
+      await supabase.auth.signOut();
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setOrganization(null);
+      setRoles([]);
+      setIsManager(false);
       setProfileReady(true);
       setLoading(false);
+      return;
     }
+
+    // Fetch org if present, otherwise clear it
+    if (profileData?.org_id) {
+      await fetchOrganization(profileData.org_id);
+    } else {
+      setOrganization(null);
+    }
+
+    setProfileReady(true);
+    setLoading(false);
   }, []);
+
+  // ── Helpers exposed via context ──────────────────────────────────
 
   const refreshProfile = async () => {
     if (user) {
@@ -141,20 +136,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const reloadAll = useCallback(async () => {
-    const currentUser = user;
-    // Force a fresh load by clearing the guard
-    lastLoadedUserId.current = null;
-    if (!currentUser) {
+    if (!user) {
+      // user state may be stale (e.g. first render) — re-check session
       const { data: { session: s } } = await supabase.auth.getSession();
       if (s?.user) {
-        setUser(s.user);
         setSession(s);
+        setUser(s.user);
         await loadUserData(s.user.id);
       }
       return;
     }
-    await loadUserData(currentUser.id);
+    await loadUserData(user.id);
   }, [user, loadUserData]);
+
+  // ── Auth lifecycle ───────────────────────────────────────────────
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -165,7 +160,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let mounted = true;
 
-    // Actively restore session on mount — don't wait passively
+    // Simple flag: set to true once initAuth finishes so the
+    // onAuthStateChange listener knows the initial load is done.
+    // This is the ONLY dedup mechanism — it prevents the listener's
+    // INITIAL_SESSION event from re-fetching what initAuth already
+    // fetched. It does NOT block any future calls.
+    const hasInitialized = { current: false };
+
     const initAuth = async () => {
       const { data: { session: existingSession } } =
         await supabase.auth.getSession();
@@ -178,6 +179,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
         setProfileReady(true);
       }
+
+      hasInitialized.current = true;
     };
 
     initAuth();
@@ -186,8 +189,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (event, newSession) => {
         if (!mounted) return;
 
+        // ── SIGNED_OUT: clear everything, no data fetch ──
         if (event === 'SIGNED_OUT') {
-          lastLoadedUserId.current = null;
           setUser(null);
           setSession(null);
           setProfile(null);
@@ -199,11 +202,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
+        // ── INITIAL_SESSION: skip only if initAuth already handled it ──
+        if (event === 'INITIAL_SESSION' && hasInitialized.current) {
+          // initAuth already loaded data for this session — nothing to do
+          return;
+        }
+
+        // ── SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED / late INITIAL_SESSION ──
         if (newSession?.user) {
-          const isNewUser = lastLoadedUserId.current !== newSession.user.id;
-          if (isNewUser) {
-            setProfileReady(false);
-          }
           setSession(newSession);
           setUser(newSession.user);
           await loadUserData(newSession.user.id);
@@ -217,6 +223,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadUserData]);
 
+  // ── Auth actions ─────────────────────────────────────────────────
+
   const signIn = async (email: string, password: string) => {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -225,19 +233,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     if (!isSupabaseConfigured) {
-      setUser(null); setSession(null); setProfile(null);
-      setOrganization(null); setRoles([]); setIsManager(false);
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setOrganization(null);
+      setRoles([]);
+      setIsManager(false);
       setProfileReady(true);
       return;
     }
     await supabase.auth.signOut();
-    setUser(null); setSession(null); setProfile(null);
-    setOrganization(null); setRoles([]); setIsManager(false);
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setOrganization(null);
+    setRoles([]);
+    setIsManager(false);
     setProfileReady(true);
   };
 
+  // ── Role checks ─────────────────────────────────────────────────
+
   const hasRole = (role: AppRole) => roles.includes(role);
   const hasAnyRole = (r: AppRole[]) => r.some(role => roles.includes(role));
+
+  // ── Render ───────────────────────────────────────────────────────
 
   return (
     <AuthContext.Provider value={{
