@@ -261,7 +261,8 @@ const Landing: React.FC = () => {
           </div>
         </section>
 
-        {/* 6. PRICING TEASER — hidden for now
+        {/* 6. PRICING TEASER — hidden for now */}
+        {false && (
         <section id="pricing" className="py-24 bg-muted/40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -331,7 +332,7 @@ const Landing: React.FC = () => {
             </div>
           </div>
         </section>
-        */}
+        )}
 
         {/* 7. FINAL CTA SECTION */}
         <section className="py-24 px-4 sm:px-6 lg:px-8">
