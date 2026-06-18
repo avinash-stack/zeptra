@@ -173,19 +173,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
 
     const initAuth = async () => {
-      const { data: { session: existingSession } } = await supabase.auth.getSession();
+      console.log('[AuthContext] initAuth: starting getSession()');
+      try {
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
 
-      if (!mounted) return;
+        console.log('[AuthContext] initAuth: getSession resolved, session:', !!existingSession);
 
-      hasHandledInitialSession.current = true;
+        if (!mounted) return;
 
-      if (existingSession?.user) {
-        setSession(existingSession);
-        setUser(existingSession.user);
-        await loadUserData(existingSession.user.id);
-      } else {
-        setLoading(false);
-        setProfileReady(true);
+        hasHandledInitialSession.current = true;
+
+        if (existingSession?.user) {
+          console.log('[AuthContext] initAuth: session found, loading user data for', existingSession.user.id);
+          setSession(existingSession);
+          setUser(existingSession.user);
+          await loadUserData(existingSession.user.id);
+          console.log('[AuthContext] initAuth: loadUserData complete');
+        } else {
+          console.log('[AuthContext] initAuth: no session, setting loading=false');
+          setLoading(false);
+          setProfileReady(true);
+        }
+      } catch (error) {
+        console.error('[AuthContext] initAuth FAILED:', error);
+        if (mounted) {
+          setLoading(false);
+          setProfileReady(true);
+        }
       }
     };
 
@@ -193,6 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
+        console.log('[AuthContext] onAuthStateChange:', event, 'user:', !!newSession?.user, 'hasHandled:', hasHandledInitialSession.current);
         if (!mounted) return;
 
         if (event === 'SIGNED_OUT') {
