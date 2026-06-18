@@ -40,169 +40,112 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
 
-  // ── Staleness counter ────────────────────────────────────────────
-  //
-  // Every loadUserData call increments this counter and captures its
-  // own snapshot. After each async step, the call checks whether its
-  // snapshot still matches the current counter — if not, a NEWER call
-  // has been started and this one's results are stale, so it bails.
-  //
-  // This is NOT a blocking guard — every call RUNS fully (fetches
-  // still happen). It just prevents an older, slower response from
-  // overwriting a newer one. Solves the race where onAuthStateChange
-  // fires loadUserData (fetching pre-org-creation data) concurrently
-  // with reloadAll's loadUserData (fetching post-org-creation data).
-  // Whichever STARTED last wins.
-  const loadGeneration = useRef(0);
-
-  // ── Data-fetching helpers (pure — return data, no state writes) ──
-
-  const fetchProfileData = async (userId: string): Promise<Profile | null> => {
+  const fetchProfile = async (userId: string) => {
     const { data, error } = await supabase
       .from('users')
       .select('*')
       .eq('id', userId)
       .single();
     if (error) console.error('fetchProfile error:', error.message);
-    return data as Profile | null;
+    const p = data as Profile | null;
+    setProfile(p);
+    return p;
   };
 
-  const fetchRolesData = async (userId: string): Promise<AppRole[]> => {
+  const fetchRoles = async (userId: string) => {
     const { data, error } = await supabase
       .from('user_roles')
       .select('role')
       .eq('user_id', userId);
     if (error) console.error('fetchRoles error:', error.message);
-    return (data as { role: AppRole }[] | null)?.map(r => r.role) || [];
+    const fetchedRoles = (data as { role: AppRole }[] | null)?.map(r => r.role) || [];
+    setRoles(fetchedRoles);
+    return fetchedRoles;
   };
 
-  const fetchOrganizationData = async (orgId: string): Promise<Organization | null> => {
+  const fetchOrganization = async (orgId: string) => {
     const { data, error } = await supabase
       .from('organizations')
       .select('*')
       .eq('id', orgId)
       .single();
     if (error) console.error('fetchOrg error:', error.message);
-    return data as Organization | null;
+    const org = data as Organization | null;
+    setOrganization(org);
+    return org;
   };
 
-  const checkIsManagerData = async (userId: string): Promise<boolean> => {
+  const checkIsManager = async (userId: string) => {
     const { data } = await supabase
       .from('users')
       .select('id')
       .eq('manager_id', userId)
       .limit(1);
-    return (data && data.length > 0) || false;
+    const result = (data && data.length > 0) || false;
+    setIsManager(result);
+    return result;
   };
 
-  // ── Helper: clear all auth state ─────────────────────────────────
-
-  const clearState = () => {
-    setUser(null);
-    setSession(null);
-    setProfile(null);
-    setOrganization(null);
-    setRoles([]);
-    setIsManager(false);
-    setProfileReady(true);
-    setLoading(false);
-  };
-
-  // ── Core loader ──────────────────────────────────────────────────
-  //
-  // Every call runs fully — no call is ever dropped or blocked.
-  // The generation counter ensures only the LATEST call's results
-  // are written to state. Older concurrent calls discard their
-  // results at the write step, not the fetch step.
-  //
-  // CRITICAL: wrapped in try/finally so that loading and profileReady
-  // are ALWAYS resolved — even if a fetch throws. Without this,
-  // a network error leaves loading=true forever → permanent blank
-  // screen on refresh.
-
+  // loadUserData ALWAYS runs to completion. No guard, no dropping.
+  // Every call fetches fresh truth from the DB and updates state.
+  // This is intentional: correctness over micro-optimization.
+  // The previous version had a ref-based guard that silently dropped
+  // calls arriving while another was in flight — this broke org
+  // creation (the reload after creating an org got dropped) and left
+  // stale state that crashed other pages on navigation. Never repeat
+  // that pattern here.
   const loadUserData = useCallback(async (userId: string) => {
-    const myGeneration = ++loadGeneration.current;
-
     try {
-      // Fetch profile, roles, manager status in parallel
-      const [profileData, fetchedRoles, managerFlag] = await Promise.all([
-        fetchProfileData(userId),
-        fetchRolesData(userId),
-        checkIsManagerData(userId),
+      const [profileData] = await Promise.all([
+        fetchProfile(userId),
+        fetchRoles(userId),
+        checkIsManager(userId),
       ]);
 
-      // Stale? A newer loadUserData started while we were fetching.
-      // Discard our results — the newer call will write state.
-      if (myGeneration !== loadGeneration.current) return;
-
-      // Inactive account → sign out and clear everything
       if (profileData && profileData.status === 'inactive') {
         toast.error('Your account has been deactivated');
         await supabase.auth.signOut();
-        clearState();
+        setUser(null);
+        setSession(null);
+        setProfile(null);
+        setOrganization(null);
+        setRoles([]);
+        setIsManager(false);
         return;
       }
 
-      // Write profile, roles, manager
-      setProfile(profileData);
-      setRoles(fetchedRoles);
-      setIsManager(managerFlag);
-
-      // Fetch org if profile has one
       if (profileData?.org_id) {
-        const orgData = await fetchOrganizationData(profileData.org_id);
-
-        // Stale check again after the org fetch
-        if (myGeneration !== loadGeneration.current) return;
-
-        setOrganization(orgData);
+        await fetchOrganization(profileData.org_id);
       } else {
         setOrganization(null);
       }
-    } catch (error) {
-      console.error('loadUserData failed:', error);
-      // If stale, a newer call will handle state — don't interfere.
-      if (myGeneration !== loadGeneration.current) return;
-      // If we're still the latest call, we must unblock the UI even
-      // on error. Profile/org may be null but at least the app won't
-      // be stuck on a blank spinner forever.
+    } catch (err) {
+      console.error('loadUserData error:', err);
     } finally {
-      // ONLY set loading/profileReady if we're still the latest call.
-      // If a newer call is in flight, let IT be responsible for these.
-      if (myGeneration === loadGeneration.current) {
-        setProfileReady(true);
-        setLoading(false);
-      }
+      setProfileReady(true);
+      setLoading(false);
     }
   }, []);
 
-  // ── Helpers exposed via context ──────────────────────────────────
-
   const refreshProfile = async () => {
     if (user) {
-      const p = await fetchProfileData(user.id);
-      setProfile(p);
-      if (p?.org_id) {
-        const orgData = await fetchOrganizationData(p.org_id);
-        setOrganization(orgData);
-      }
+      const p = await fetchProfile(user.id);
+      if (p?.org_id) await fetchOrganization(p.org_id);
     }
   };
 
   const refreshOrg = async () => {
     if (user) {
-      const p = await fetchProfileData(user.id);
-      setProfile(p);
-      if (p?.org_id) {
-        const orgData = await fetchOrganizationData(p.org_id);
-        setOrganization(orgData);
-      }
+      const p = await fetchProfile(user.id);
+      if (p?.org_id) await fetchOrganization(p.org_id);
     }
   };
 
+  // reloadAll ALWAYS runs to completion — this is what OrganizationProfile.tsx
+  // calls right after creating a new org, to pick up the new org_id and
+  // admin role. It must never be silently dropped.
   const reloadAll = useCallback(async () => {
     if (!user) {
-      // user state may be stale (e.g. first render) — re-check session
       const { data: { session: s } } = await supabase.auth.getSession();
       if (s?.user) {
         setSession(s);
@@ -214,7 +157,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadUserData(user.id);
   }, [user, loadUserData]);
 
-  // ── Auth lifecycle ───────────────────────────────────────────────
+  // Prevents only ONE specific redundant fetch: getSession() on mount
+  // and the subsequent INITIAL auth event both firing for the exact
+  // same session. This does NOT block any future legitimate call —
+  // it only matters during the very first mount.
+  const hasHandledInitialSession = useRef(false);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -225,34 +172,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let mounted = true;
 
-    // Set to true once initAuth completes. Only purpose: prevent the
-    // onAuthStateChange INITIAL_SESSION event from redundantly
-    // re-fetching what initAuth already fetched. Does NOT block any
-    // future calls.
-    const hasInitialized = { current: false };
-
     const initAuth = async () => {
-      try {
-        const { data: { session: existingSession } } =
-          await supabase.auth.getSession();
+      const { data: { session: existingSession } } = await supabase.auth.getSession();
 
-        if (mounted && existingSession?.user) {
-          setSession(existingSession);
-          setUser(existingSession.user);
-          await loadUserData(existingSession.user.id);
-        } else if (mounted) {
-          setLoading(false);
-          setProfileReady(true);
-        }
-      } catch (error) {
-        console.error('initAuth failed:', error);
-        if (mounted) {
-          setLoading(false);
-          setProfileReady(true);
-        }
+      if (!mounted) return;
+
+      hasHandledInitialSession.current = true;
+
+      if (existingSession?.user) {
+        setSession(existingSession);
+        setUser(existingSession.user);
+        await loadUserData(existingSession.user.id);
+      } else {
+        setLoading(false);
+        setProfileReady(true);
       }
-
-      hasInitialized.current = true;
     };
 
     initAuth();
@@ -261,19 +195,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (event, newSession) => {
         if (!mounted) return;
 
-        // ── SIGNED_OUT: clear everything, no data fetch ──
         if (event === 'SIGNED_OUT') {
-          loadGeneration.current++; // invalidate any in-flight loads
-          clearState();
+          setUser(null);
+          setSession(null);
+          setProfile(null);
+          setOrganization(null);
+          setRoles([]);
+          setIsManager(false);
+          setProfileReady(true);
+          setLoading(false);
           return;
         }
 
-        // ── INITIAL_SESSION: skip if initAuth already handled it ──
-        if (event === 'INITIAL_SESSION' && hasInitialized.current) {
+        // Skip only the very first INITIAL_SESSION-equivalent event if
+        // initAuth() above already handled it. Every subsequent event
+        // (including a second SIGNED_IN for the same user, e.g. after
+        // creating an org) runs loadUserData fully — no exceptions.
+        if (event === 'INITIAL_SESSION' && hasHandledInitialSession.current) {
           return;
         }
 
-        // ── SIGNED_IN / TOKEN_REFRESHED / USER_UPDATED ──
         if (newSession?.user) {
           setSession(newSession);
           setUser(newSession.user);
@@ -288,8 +229,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [loadUserData]);
 
-  // ── Auth actions ─────────────────────────────────────────────────
-
   const signIn = async (email: string, password: string) => {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -298,19 +237,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     if (!isSupabaseConfigured) {
-      clearState();
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      setOrganization(null);
+      setRoles([]);
+      setIsManager(false);
+      setProfileReady(true);
       return;
     }
     await supabase.auth.signOut();
-    clearState();
+    setUser(null);
+    setSession(null);
+    setProfile(null);
+    setOrganization(null);
+    setRoles([]);
+    setIsManager(false);
+    setProfileReady(true);
   };
-
-  // ── Role checks ─────────────────────────────────────────────────
 
   const hasRole = (role: AppRole) => roles.includes(role);
   const hasAnyRole = (r: AppRole[]) => r.some(role => roles.includes(role));
-
-  // ── Render ───────────────────────────────────────────────────────
 
   return (
     <AuthContext.Provider value={{
