@@ -87,13 +87,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // loadUserData ALWAYS runs to completion. No guard, no dropping.
-  // Every call fetches fresh truth from the DB and updates state.
-  // This is intentional: correctness over micro-optimization.
-  // The previous version had a ref-based guard that silently dropped
-  // calls arriving while another was in flight — this broke org
-  // creation (the reload after creating an org got dropped) and left
-  // stale state that crashed other pages on navigation. Never repeat
-  // that pattern here.
   const loadUserData = useCallback(async (userId: string) => {
     try {
       const [profileData] = await Promise.all([
@@ -142,8 +135,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // reloadAll ALWAYS runs to completion — this is what OrganizationProfile.tsx
-  // calls right after creating a new org, to pick up the new org_id and
-  // admin role. It must never be silently dropped.
+  // calls right after creating a new org. It must never be silently dropped.
   const reloadAll = useCallback(async () => {
     if (!user) {
       const { data: { session: s } } = await supabase.auth.getSession();
@@ -157,12 +149,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await loadUserData(user.id);
   }, [user, loadUserData]);
 
-  // Prevents only ONE specific redundant fetch: getSession() on mount
-  // and the subsequent INITIAL auth event both firing for the exact
-  // same session. This does NOT block any future legitimate call —
-  // it only matters during the very first mount.
-  const hasHandledInitialSession = useRef(false);
-
+  // ── Effect 1: Auth event handling ────────────────────────────────
+  //
+  // CRITICAL RULE: The onAuthStateChange callback must be SYNCHRONOUS.
+  // Supabase v2 holds an internal session lock while this callback
+  // executes. Any Supabase API call (DB queries, getSession) made
+  // inside this callback will try to acquire the SAME lock → DEADLOCK.
+  //
+  // So we ONLY do synchronous React state updates here (setUser,
+  // setSession). The actual data loading (loadUserData) is triggered
+  // by Effect 2 below, which runs OUTSIDE the Supabase lock.
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setLoading(false);
@@ -172,42 +168,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     let mounted = true;
 
-    const initAuth = async () => {
-      console.log('[AuthContext] initAuth: starting getSession()');
-      try {
-        const { data: { session: existingSession } } = await supabase.auth.getSession();
-
-        console.log('[AuthContext] initAuth: getSession resolved, session:', !!existingSession);
-
-        if (!mounted) return;
-
-        hasHandledInitialSession.current = true;
-
-        if (existingSession?.user) {
-          console.log('[AuthContext] initAuth: session found, loading user data for', existingSession.user.id);
-          setSession(existingSession);
-          setUser(existingSession.user);
-          await loadUserData(existingSession.user.id);
-          console.log('[AuthContext] initAuth: loadUserData complete');
-        } else {
-          console.log('[AuthContext] initAuth: no session, setting loading=false');
-          setLoading(false);
-          setProfileReady(true);
-        }
-      } catch (error) {
-        console.error('[AuthContext] initAuth FAILED:', error);
-        if (mounted) {
-          setLoading(false);
-          setProfileReady(true);
-        }
-      }
-    };
-
-    initAuth();
-
+    // Register the listener FIRST (Supabase recommended pattern)
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        console.log('[AuthContext] onAuthStateChange:', event, 'user:', !!newSession?.user, 'hasHandled:', hasHandledInitialSession.current);
+      (event, newSession) => {
         if (!mounted) return;
 
         if (event === 'SIGNED_OUT') {
@@ -222,27 +185,56 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return;
         }
 
-        // Skip only the very first INITIAL_SESSION-equivalent event if
-        // initAuth() above already handled it. Every subsequent event
-        // (including a second SIGNED_IN for the same user, e.g. after
-        // creating an org) runs loadUserData fully — no exceptions.
-        if (event === 'INITIAL_SESSION' && hasHandledInitialSession.current) {
-          return;
-        }
-
+        // For SIGNED_IN, TOKEN_REFRESHED, INITIAL_SESSION, USER_UPDATED:
+        // just update session/user. Data loading happens in Effect 2.
         if (newSession?.user) {
           setSession(newSession);
           setUser(newSession.user);
-          await loadUserData(newSession.user.id);
         }
       }
     );
+
+    // Then actively restore session
+    supabase.auth.getSession().then(({ data: { session: existingSession } }) => {
+      if (!mounted) return;
+      if (existingSession?.user) {
+        setSession(existingSession);
+        setUser(existingSession.user);
+      } else {
+        // No session at all — stop loading immediately
+        setLoading(false);
+        setProfileReady(true);
+      }
+    }).catch((error) => {
+      console.error('getSession failed:', error);
+      if (mounted) {
+        setLoading(false);
+        setProfileReady(true);
+      }
+    });
 
     return () => {
       mounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [loadUserData]);
+  }, []);
+
+  // ── Effect 2: Load user data when user changes ───────────────────
+  //
+  // This runs OUTSIDE the Supabase auth lock, so DB queries work
+  // without deadlocking. It fires when user.id changes (login,
+  // logout→login as different user). For same-user reloads (e.g.
+  // after org creation), reloadAll() calls loadUserData directly.
+  const prevUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (user && user.id !== prevUserIdRef.current) {
+      prevUserIdRef.current = user.id;
+      loadUserData(user.id);
+    } else if (!user) {
+      prevUserIdRef.current = null;
+    }
+  }, [user, loadUserData]);
 
   const signIn = async (email: string, password: string) => {
     if (!isSupabaseConfigured) throw new Error('Supabase is not configured.');
