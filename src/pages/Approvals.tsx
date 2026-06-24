@@ -17,7 +17,7 @@ import { RiskBadge } from '@/components/RiskBadge';
 import type { ExpenseWithDetails, Profile } from '@/types/database';
 
 const Approvals: React.FC = () => {
-  const { user, hasAnyRole, hasRole } = useAuth();
+  const { user, hasAnyRole, hasRole, profileReady, roles } = useAuth();
   const [expenses, setExpenses] = useState<ExpenseWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionExpense, setActionExpense] = useState<ExpenseWithDetails | null>(null);
@@ -66,9 +66,10 @@ const Approvals: React.FC = () => {
   };
 
   useEffect(() => {
+    if (!profileReady) return; // wait until auth data (roles) is ready
     fetchPendingExpenses();
     fetchReassignCandidates();
-  }, [user, page]);
+  }, [user, page, profileReady, roles]);
 
   const fetchPendingExpenses = async () => {
     if (!user) return;
