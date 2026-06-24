@@ -17,7 +17,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE public.expense_status AS ENUM ('pending_l1', 'pending_l2', 'approved', 'rejected');
+  CREATE TYPE public.expense_status AS ENUM ('pending_l1', 'pending_l2', 'approved', 'rejected', 'reimbursed');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
@@ -371,21 +371,33 @@ CREATE POLICY "Employee can insert own expenses" ON public.expenses
     )
   );
 
--- Expense update: include finance, block self-approval
+-- Expense update: terminal-state guard, manager reversal, finance override
 DROP POLICY IF EXISTS "expense_update" ON public.expenses;
+DROP POLICY IF EXISTS "exp_update"     ON public.expenses;
 CREATE POLICY "expense_update" ON public.expenses FOR UPDATE TO authenticated
   USING (
-    public.is_active_user(auth.uid()) = true AND
-    (
+    public.is_active_user(auth.uid()) = true
+    AND status <> 'reimbursed'
+    AND (
       (user_id = auth.uid() AND status = 'pending_l1')
       OR current_approver_id = auth.uid()
-      OR (public.has_role(auth.uid(),'admin') AND org_id = public.user_org_id(auth.uid()))
-      OR (public.has_role(auth.uid(),'finance') AND org_id = public.user_org_id(auth.uid()))
+      OR (
+        public.is_manager(auth.uid())
+        AND EXISTS (
+          SELECT 1 FROM public.approval_history ah
+          WHERE ah.expense_id = expenses.id
+            AND ah.approver_id = auth.uid()
+            AND ah.action IN ('approved', 'rejected')
+        )
+      )
+      OR (public.has_role(auth.uid(), 'finance') AND org_id = public.user_org_id(auth.uid()))
+      OR (public.has_role(auth.uid(), 'admin')   AND org_id = public.user_org_id(auth.uid()))
     )
   )
   WITH CHECK (
     org_id = public.user_org_id(auth.uid())
     AND NOT (user_id = auth.uid() AND status IS DISTINCT FROM 'pending_l1')
+    AND (status <> 'reimbursed' OR public.has_role(auth.uid(), 'finance'))
   );
 
 CREATE POLICY "Employee can delete own pending expenses" ON public.expenses
@@ -926,6 +938,23 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- TERMINAL: reimbursed is immutable
+  IF OLD.status = 'reimbursed' THEN
+    RAISE EXCEPTION 'Cannot change status of a reimbursed expense';
+  END IF;
+
+  -- Only Finance can set reimbursed, and only from approved
+  IF NEW.status = 'reimbursed' THEN
+    IF NOT public.has_role(auth.uid(), 'finance') THEN
+      RAISE EXCEPTION 'Only Finance can mark an expense as reimbursed';
+    END IF;
+    IF OLD.status <> 'approved' THEN
+      RAISE EXCEPTION 'Only approved expenses can be marked as reimbursed (current: %)', OLD.status;
+    END IF;
+    RETURN NEW;
+  END IF;
+
+  -- Forward transitions
   IF OLD.status = 'pending_l1' AND NEW.status IN ('pending_l2', 'approved', 'rejected') THEN
     RETURN NEW;
   END IF;
@@ -934,12 +963,23 @@ BEGIN
     RETURN NEW;
   END IF;
 
+  -- Reversals (manager reversal + finance override)
+  IF OLD.status = 'approved' AND NEW.status = 'rejected' THEN
+    RETURN NEW;
+  END IF;
+
+  IF OLD.status = 'rejected' AND NEW.status = 'approved' THEN
+    RETURN NEW;
+  END IF;
+
   RAISE EXCEPTION 'Invalid expense status transition from % to %', OLD.status, NEW.status;
 END;
 $$;
 DROP TRIGGER IF EXISTS enforce_expense_status_transition ON public.expenses;
-CREATE TRIGGER enforce_expense_status_transition BEFORE INSERT OR UPDATE ON public.expenses
-  FOR EACH ROW EXECUTE FUNCTION public.enforce_expense_status_transition();
+CREATE TRIGGER enforce_expense_status_transition
+  BEFORE INSERT OR UPDATE ON public.expenses
+  FOR EACH ROW
+  EXECUTE FUNCTION public.enforce_expense_status_transition();
 
 CREATE OR REPLACE FUNCTION public.enforce_plan_limits()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
