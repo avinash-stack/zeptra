@@ -411,9 +411,11 @@ const Approvals: React.FC = () => {
                         <Button size="sm" variant="ghost" className="text-success" onClick={() => openAction(expense, 'approve')}>
                           <CheckCircle className="h-4 w-4" />
                         </Button>
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => openAction(expense, 'reject')}>
-                          <XCircle className="h-4 w-4" />
-                        </Button>
+                        {(expense.status === 'pending_l1' || expense.status === 'pending_l2') && (
+                          <Button size="sm" variant="ghost" className="text-destructive" onClick={() => openAction(expense, 'reject')}>
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        )}
                         {!hasAnyRole(['finance']) && (
                           <Button size="sm" variant="ghost" onClick={() => openAction(expense, 'reassign')}>
                             <ArrowRight className="h-4 w-4" />

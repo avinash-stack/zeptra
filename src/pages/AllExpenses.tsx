@@ -173,7 +173,7 @@ const AllExpenses: React.FC = () => {
         expense_id: rejectExpense.id,
         approver_id: user!.id,
         action: 'rejected',
-        level: 2,
+        level: rejectExpense.status === 'pending_l1' ? 1 : 2,
         comments: rejectComment,
       });
       toast.success('Expense rejected');
