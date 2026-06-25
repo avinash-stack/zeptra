@@ -1334,7 +1334,16 @@ DECLARE
 BEGIN
   -- Verify caller belongs to this org
   SELECT org_id INTO _caller_org FROM public.users WHERE id = auth.uid();
-  IF _caller_org IS DISTINCT FROM p_org_id THEN
+
+  -- User's org assignment hasn't propagated yet — not a security
+  -- issue, just a timing gap. Return empty stats rather than
+  -- crashing the dashboard.
+  IF _caller_org IS NULL THEN
+    RETURN '{"total":0,"totalAmount":0,"pending":0,"approved":0,"rejected":0,"reimbursed":0,"flagged":0,"byMonth":[],"byCategory":[],"topSpenders":[]}'::jsonb;
+  END IF;
+
+  -- Genuine security violation: user belongs to a different org
+  IF _caller_org != p_org_id THEN
     RAISE EXCEPTION 'Access denied: org mismatch';
   END IF;
 
@@ -1344,6 +1353,7 @@ BEGIN
     'pending',     COALESCE(COUNT(*) FILTER (WHERE e.status IN ('pending_l1','pending_l2'))::INT, 0),
     'approved',    COALESCE(COUNT(*) FILTER (WHERE e.status = 'approved')::INT, 0),
     'rejected',    COALESCE(COUNT(*) FILTER (WHERE e.status = 'rejected')::INT, 0),
+    'reimbursed',  COALESCE(COUNT(*) FILTER (WHERE e.status = 'reimbursed')::INT, 0),
     'flagged',     COALESCE(COUNT(*) FILTER (WHERE e.ai_analysis->>'risk_level' IN ('medium','high'))::INT, 0),
     'byMonth',     COALESCE((
       SELECT jsonb_agg(row_to_json(m) ORDER BY m.month_num)

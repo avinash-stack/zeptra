@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
-import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receipt, Plus, Download, AlertTriangle } from 'lucide-react';
+import { Coins, Clock, CheckCircle, XCircle, TrendingUp, Users, FileText, Receipt, Plus, Download, AlertTriangle, DollarSign } from 'lucide-react';
 import { logExport } from '@/lib/auditLogger';
 import type { OrgCurrency } from '@/types/database';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -31,7 +31,7 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { user, profile, hasRole, hasAnyRole, isManager } = useAuth();
   const { canAccess, isLoading: limitsLoading } = usePlanLimit();
-  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, totalAmount: 0, flagged: 0 });
+  const [stats, setStats] = useState({ total: 0, approved: 0, pending: 0, rejected: 0, reimbursed: 0, totalAmount: 0, flagged: 0 });
   const [monthlyData, setMonthlyData] = useState<any[]>([]);
   const [dateRange, setDateRange] = useState<'30d' | '90d' | 'year' | 'all'>('all');
   const [allExpenses, setAllExpenses] = useState<any[]>([]);
@@ -85,6 +85,7 @@ const Dashboard: React.FC = () => {
           pending: Number(data?.pending ?? 0),
           approved: Number(data?.approved ?? 0),
           rejected: Number(data?.rejected ?? 0),
+          reimbursed: Number(data?.reimbursed ?? 0),
           flagged: Number(data?.flagged ?? 0),
         });
         setMonthlyData(data?.byMonth ?? []);
@@ -106,12 +107,13 @@ const Dashboard: React.FC = () => {
         const approved = expenses.filter(e => e.status === 'approved').length;
         const pending = expenses.filter(e => e.status === 'pending_l1' || e.status === 'pending_l2').length;
         const rejected = expenses.filter(e => e.status === 'rejected').length;
+        const reimbursed = expenses.filter(e => e.status === 'reimbursed').length;
         const totalAmount = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
         const flagged = expenses.filter((e: any) =>
           e.ai_analysis?.risk_level === 'medium' ||
           e.ai_analysis?.risk_level === 'high'
         ).length;
-        setStats({ total, approved, pending, rejected, totalAmount, flagged });
+        setStats({ total, approved, pending, rejected, reimbursed, totalAmount, flagged });
 
         const months: Record<string, number> = {};
         expenses.forEach(e => {
@@ -134,6 +136,7 @@ const Dashboard: React.FC = () => {
     { name: 'Approved', value: stats.approved },
     { name: 'Pending', value: stats.pending },
     { name: 'Rejected', value: stats.rejected },
+    { name: 'Reimbursed', value: stats.reimbursed },
   ].filter(d => d.value > 0);
 
   const categoryData = allExpenses.reduce((acc, e) => {
@@ -205,8 +208,8 @@ const Dashboard: React.FC = () => {
       {isDashboardLoading ? (
         <div className="space-y-6">
           {/* Skeleton Stats Cards */}
-          <div className={isAdmin ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"}>
-            {Array.from({ length: isAdmin ? 7 : 4 }).map((_, i) => (
+          <div className={isAdmin ? "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"}>
+            {Array.from({ length: isAdmin ? 8 : 4 }).map((_, i) => (
               <Card key={i} className="overflow-hidden">
                 <CardHeader className="flex flex-row items-center justify-between pb-2">
                   <Skeleton className="h-4 w-24" />
@@ -312,11 +315,12 @@ const Dashboard: React.FC = () => {
           )}
 
           {isAdmin ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               <StatsCard title="Total Expenses" value={stats.total} icon={FileText} iconClassName="bg-gradient-to-br from-primary to-accent" />
               <StatsCard title="Total Amount" value={`${defaultCurrSymbol}${stats.totalAmount.toLocaleString()}`} icon={Coins} iconClassName="bg-gradient-to-br from-success to-success/70" />
               <StatsCard title="Pending" value={stats.pending} icon={Clock} iconClassName="bg-gradient-to-br from-warning to-warning/70" />
               <StatsCard title="Approved" value={stats.approved} icon={CheckCircle} iconClassName="bg-gradient-to-br from-success to-success/70" />
+              <StatsCard title="Reimbursed" value={stats.reimbursed} icon={DollarSign} iconClassName="bg-gradient-to-br from-primary to-primary/70" />
               <StatsCard title="Avg per expense" value={`${defaultCurrSymbol}${stats.total > 0 ? (stats.totalAmount / stats.total).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '0'}`} icon={TrendingUp} iconClassName="bg-gradient-to-br from-info to-info/70" />
               <StatsCard title="Rejection rate" value={`${stats.total > 0 ? ((stats.rejected / stats.total) * 100).toFixed(1) : '0'}%`} icon={XCircle} iconClassName="bg-gradient-to-br from-destructive to-destructive/70" />
               <div
