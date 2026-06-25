@@ -175,6 +175,11 @@ const AllExpenses: React.FC = () => {
     newStatus: FinanceActionStatus,
     note: string
   ) => {
+    if (expense.user_id === user!.id) {
+      toast.error("You cannot approve or reject your own expense");
+      return;
+    }
+
     if (expense.status === 'reimbursed') {
       toast.error('Reimbursed expenses are final and cannot be changed');
       return;

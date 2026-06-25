@@ -499,11 +499,15 @@ const Approvals: React.FC = () => {
           current_approver_id: null,
         })
         .eq('id', expense.id)
+        .eq('version', (expense as any).version)
+        .eq('status', expense.status)
         .select('id')
         .single();
 
       if (updateError || !updated) {
-        throw new Error(updateError?.message || 'Failed to update the expense decision');
+        toast.error('This expense was changed by someone else. Refreshing...');
+        fetchTeamHistoryExpenses();
+        return;
       }
 
       const auditComment = `Changed from ${currentStatus} to ${newStatus}: ${note.trim()}`;
