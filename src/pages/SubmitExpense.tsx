@@ -370,9 +370,44 @@ const SubmitExpense: React.FC = () => {
         }
       }
 
+      // ── Currency conversion: convert to org's base currency ──
+      const defaultCurr = currencies.find(c => c.is_default);
+      const baseCurrency = defaultCurr?.code || 'USD';
+      const expenseAmount = parseFloat(data.amount);
+
+      let baseAmount: number | null = expenseAmount;
+      let exchangeRate: number | null = 1;
+      let rateDate: string | null = data.expenseDate;
+
+      if (data.currency !== baseCurrency) {
+        try {
+          const { data: convResult, error: convError } = await supabase.functions.invoke(
+            'convert-currency',
+            { body: { amount: expenseAmount, from: data.currency, to: baseCurrency, date: data.expenseDate } }
+          );
+          if (convError || !convResult || convResult.error) {
+            // Conversion failed — do NOT block submission. Store nulls so
+            // the dashboard can skip this expense rather than miscalculate.
+            console.error('Currency conversion failed:', convError || convResult?.error);
+            baseAmount = null;
+            exchangeRate = null;
+            rateDate = null;
+          } else {
+            baseAmount = convResult.converted_amount;
+            exchangeRate = convResult.rate;
+            rateDate = convResult.rate_date;
+          }
+        } catch (e) {
+          console.error('Currency conversion exception:', e);
+          baseAmount = null;
+          exchangeRate = null;
+          rateDate = null;
+        }
+      }
+
       const { data: inserted, error } = await supabase.from('expenses').insert({
         user_id: user.id,
-        amount: parseFloat(data.amount),
+        amount: expenseAmount,
         currency: data.currency || 'INR',
         category_id: data.categoryId,
         description: data.description,
@@ -381,6 +416,10 @@ const SubmitExpense: React.FC = () => {
         current_approver_id: approverId,
         submitted_at: new Date(`${data.expenseDate}T12:00:00`).toISOString(),
         is_policy_exception: isPolicyException,
+        base_amount: baseAmount,
+        base_currency: baseCurrency,
+        exchange_rate: exchangeRate,
+        rate_date: rateDate,
         gst_details: data.gstNumber || cgst || sgst || igst ? {
           gstin: data.gstNumber || null,
           cgst: cgst ? parseFloat(cgst) : null,
