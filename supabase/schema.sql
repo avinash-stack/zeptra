@@ -23,7 +23,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE public.approval_action AS ENUM ('approved', 'rejected', 'reassigned');
+  CREATE TYPE public.approval_action AS ENUM ('approved', 'rejected', 'reassigned', 'reimbursed');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
