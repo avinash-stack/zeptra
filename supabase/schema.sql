@@ -23,7 +23,7 @@ EXCEPTION
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE public.approval_action AS ENUM ('approved', 'rejected', 'reassigned', 'reimbursed');
+  CREATE TYPE public.approval_action AS ENUM ('approved', 'rejected', 'reassigned', 'reimbursed', 'decision_reversed');
 EXCEPTION
   WHEN duplicate_object THEN null;
 END $$;
@@ -43,6 +43,7 @@ CREATE TABLE public.organizations (
   slug TEXT NOT NULL UNIQUE,
   corporate_email TEXT NOT NULL,
   business_phone TEXT,
+  country TEXT NOT NULL DEFAULT 'IN',
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
@@ -112,6 +113,10 @@ CREATE TABLE public.expenses (
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE RESTRICT,
   amount DECIMAL(12,2) NOT NULL CHECK (amount > 0),
   currency TEXT DEFAULT 'USD' NOT NULL,
+  base_amount DECIMAL(12,2),
+  base_currency TEXT,
+  exchange_rate DECIMAL(18,8),
+  rate_date DATE,
   category_id UUID NOT NULL REFERENCES public.expense_categories(id),
   description TEXT NOT NULL,
   receipt_url TEXT,
@@ -575,7 +580,8 @@ CREATE OR REPLACE FUNCTION public.create_organization(
   _name TEXT,
   _slug TEXT,
   _corporate_email TEXT,
-  _business_phone TEXT DEFAULT NULL
+  _business_phone TEXT DEFAULT NULL,
+  p_country TEXT DEFAULT 'IN'
 )
 RETURNS UUID
 LANGUAGE plpgsql
@@ -592,9 +598,9 @@ BEGIN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
 
-  -- Create the organization
-  INSERT INTO public.organizations (name, slug, corporate_email, business_phone, created_by)
-  VALUES (_name, _slug, _corporate_email, _business_phone, _uid)
+  -- Create the organization (now includes country)
+  INSERT INTO public.organizations (name, slug, corporate_email, business_phone, country, created_by)
+  VALUES (_name, _slug, _corporate_email, _business_phone, p_country, _uid)
   RETURNING id INTO _org_id;
 
   -- Link user to org
@@ -615,9 +621,15 @@ BEGIN
     (_org_id, 'Communication'),
     (_org_id, 'Miscellaneous');
 
-  -- Seed default currency
+  -- Seed default currency based on country
   INSERT INTO public.org_currencies (org_id, code, symbol, name, is_default) VALUES
-    (_org_id, 'USD', '$', 'US Dollar', true);
+    (
+      _org_id,
+      CASE WHEN p_country = 'IN' THEN 'INR' ELSE 'USD' END,
+      CASE WHEN p_country = 'IN' THEN '₹' ELSE '$' END,
+      CASE WHEN p_country = 'IN' THEN 'Indian Rupee' ELSE 'US Dollar' END,
+      true
+    );
 
   -- Determine initial subscription plan (safe if plan_overrides missing)
   SELECT email INTO _creator_email FROM public.users WHERE id = _uid;
@@ -627,9 +639,9 @@ BEGIN
     _override_plan := NULL;
   END;
 
-  -- Seed a subscription for the new org
-  INSERT INTO public.subscriptions (org_id, plan, status)
-  VALUES (_org_id, COALESCE(_override_plan, 'free'), 'active');
+  -- Seed a subscription for the new org (with 14-day trial)
+  INSERT INTO public.subscriptions (org_id, plan, status, trial_start, trial_end)
+  VALUES (_org_id, COALESCE(_override_plan, 'free'), 'active', now(), now() + INTERVAL '14 days');
 
   RETURN _org_id;
 EXCEPTION WHEN OTHERS THEN
@@ -678,6 +690,8 @@ CREATE TABLE public.subscriptions (
   plan TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'enterprise')),
   status TEXT NOT NULL DEFAULT 'active',
   current_period_end TIMESTAMPTZ,
+  trial_start TIMESTAMPTZ,
+  trial_end TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   last_event_timestamp TIMESTAMPTZ

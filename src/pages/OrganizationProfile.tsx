@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Loader2, Mail, Plus, Rocket, ShieldCheck, Trash2, Users, XCircle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, Globe, Loader2, Mail, Plus, Rocket, ShieldCheck, Trash2, Users, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -108,6 +108,7 @@ const OrganizationProfile: React.FC = () => {
   const [slugEdited, setSlugEdited] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [country, setCountry] = useState('IN');
 
   // Step 2 — invites
   const [invites, setInvites] = useState<InviteRow[]>([emptyInvite()]);
@@ -141,6 +142,7 @@ const OrganizationProfile: React.FC = () => {
       nextErrors.companySlug = "Use lowercase letters, numbers, and hyphens only.";
     }
     if (!form.corporateEmail.trim()) nextErrors.corporateEmail = "Corporate email is required.";
+    if (!country) (nextErrors as Record<string, string>).country = "Country is required.";
     if (!form.adminEmail.trim()) nextErrors.adminEmail = "Admin email is required.";
     if (!form.password) nextErrors.password = "Password is required.";
     if (form.password && form.password.length < 8) nextErrors.password = "Password must be at least 8 characters.";
@@ -216,6 +218,7 @@ const OrganizationProfile: React.FC = () => {
         _slug: form.companySlug.trim(),
         _corporate_email: form.corporateEmail.trim().toLowerCase(),
         _business_phone: form.businessPhone.trim() || null,
+        p_country: country,
       });
 
       if (orgError || !newOrgId) {
@@ -292,12 +295,15 @@ const OrganizationProfile: React.FC = () => {
       body: { invites: payload },
     });
 
+    let hasFailures = false;
+
     if (error || !data?.success) {
       filledInvites.forEach((invite) => {
         const realIdx = invites.indexOf(invite);
         updateInvite(realIdx, "status", "failed");
       });
       toast.error(error?.message || data?.error || "Failed to invite some users");
+      hasFailures = true;
     } else {
       let succeededCount = 0;
       let failedCount = 0;
@@ -315,11 +321,14 @@ const OrganizationProfile: React.FC = () => {
       setInvitesSentCount(succeededCount);
 
       if (succeededCount > 0) toast.success(`${succeededCount} invite${succeededCount > 1 ? "s" : ""} sent!`);
-      if (failedCount > 0) toast.error(`${failedCount} invite${failedCount > 1 ? "s" : ""} failed. You can retry later from User Management.`);
+      if (failedCount > 0) {
+        toast.error(`${failedCount} invite${failedCount > 1 ? "s" : ""} failed. You can retry later from User Management.`);
+        hasFailures = true;
+      }
     }
 
     setInviteSending(false);
-    if (failedCount > 0) return;
+    if (hasFailures) return;
     setStep(3);
   };
 
@@ -373,6 +382,29 @@ const OrganizationProfile: React.FC = () => {
                   <div className="space-y-2">
                     <Label htmlFor="businessPhone">Business Phone</Label>
                     <Input id="businessPhone" placeholder="+1-555-0123" value={form.businessPhone} onChange={onChange("businessPhone")} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label {...required}><Globe className="inline h-4 w-4 mr-1 -mt-0.5" />Country</Label>
+                    <Select value={country} onValueChange={setCountry}>
+                      <SelectTrigger id="country">
+                        <SelectValue placeholder="Select your country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="IN">India</SelectItem>
+                        <SelectItem value="US">United States</SelectItem>
+                        <SelectItem value="GB">United Kingdom</SelectItem>
+                        <SelectItem value="AU">Australia</SelectItem>
+                        <SelectItem value="CA">Canada</SelectItem>
+                        <SelectItem value="SG">Singapore</SelectItem>
+                        <SelectItem value="AE">United Arab Emirates</SelectItem>
+                        <SelectItem value="OTHER">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      This sets your organization's billing region and default currency.
+                      India → ₹ INR. All other countries → $ USD.
+                    </p>
+                    {(errors as Record<string, string>).country && <p className="text-sm text-destructive">{(errors as Record<string, string>).country}</p>}
                   </div>
                 </div>
               </section>

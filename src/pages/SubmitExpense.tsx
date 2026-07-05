@@ -434,11 +434,6 @@ const SubmitExpense: React.FC = () => {
 
       if (error || !inserted) throw error ?? new Error('Insert failed');
 
-      // Fire-and-forget notification — never block or fail the submission
-      supabase.functions.invoke('send-notification', {
-        body: { event: 'submitted', expense_id: inserted.id }
-      }).catch(err => console.error('Notification failed:', err));
-
       toast.success('Expense submitted successfully!');
       reset();
       setReceipt(null);

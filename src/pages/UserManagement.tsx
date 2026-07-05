@@ -159,7 +159,8 @@ const UserManagement: React.FC = () => {
     try {
       let query = supabase
         .from('users')
-        .select('*', { count: 'exact' });
+        .select('*', { count: 'exact' })
+        .eq('is_active', true);
 
       if (searchTerm.trim() !== '') {
         query = query.or(`name.ilike.%${searchTerm}%,email.ilike.%${searchTerm}%`);
@@ -338,7 +339,7 @@ const UserManagement: React.FC = () => {
         target_user_id: deleteUser.id,
       });
 
-      toast.success(`Deleted ${deleteUser.email}`);
+      toast.success('User removed successfully');
       setDeleteUser(null);
       fetchUsers();
       fetchManagers();
@@ -621,10 +622,10 @@ const UserManagement: React.FC = () => {
       <AlertDialog open={!!deleteUser} onOpenChange={open => !open && setDeleteUser(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete user</AlertDialogTitle>
+            <AlertDialogTitle>Remove User</AlertDialogTitle>
             <AlertDialogDescription>
               {deleteUser
-                ? `This will permanently delete ${deleteUser.name} (${deleteUser.email}). This action cannot be undone.`
+                ? `This will deactivate ${deleteUser.name}'s account and remove their access to Zeptra permanently. Their expense history will be preserved for audit purposes. This action cannot be undone.`
                 : 'This action cannot be undone.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -636,7 +637,7 @@ const UserManagement: React.FC = () => {
               disabled={actionUserId === deleteUser?.id}
             >
               {actionUserId === deleteUser?.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Delete User
+              Remove User
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

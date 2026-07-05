@@ -95,12 +95,17 @@ Deno.serve(async (req) => {
     const tag = body.tag ? String(body.tag) : null;
     const redirectTo = body.redirect_to ? String(body.redirect_to) : undefined;
 
-    // Plan limit check
+    // Plan limit check (includes trial-aware effectivePlan logic)
     const { data: sub } = await admin.from('subscriptions')
-      .select('plan').eq('org_id', callerProfile.org_id).single();
-    const plan = sub?.plan || 'free';
+      .select('plan, trial_start, trial_end').eq('org_id', callerProfile.org_id).single();
+    const rawPlan = sub?.plan || 'free';
+    const now = new Date();
+    const trialEnd = sub?.trial_end ? new Date(sub.trial_end) : null;
+    const isInTrial = trialEnd ? now < trialEnd : false;
+    const effectivePlan = (rawPlan === 'free' && isInTrial) ? 'pro' : rawPlan;
+
     const { data: planLimit } = await admin.from('plan_limits')
-      .select('max_users').eq('plan', plan).single();
+      .select('max_users').eq('plan', effectivePlan).single();
     const limit = planLimit?.max_users ?? null;
 
     const invites = Array.isArray(body.invites) ? body.invites : [body];
@@ -110,7 +115,7 @@ Deno.serve(async (req) => {
         .select('id', { count:'exact', head:true })
         .eq('org_id', callerProfile.org_id).eq('is_active', true);
       if ((count||0) + invites.length > limit)
-        return json(403, { error: `${plan} plan limit reached. Upgrade to invite more users.` });
+        return json(403, { error: `${effectivePlan} plan limit reached. Upgrade to invite more users.` });
     }
 
     // Fetch org name

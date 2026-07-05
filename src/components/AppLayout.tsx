@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/AppSidebar';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
 import { Bell, User, Settings, HelpCircle, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -13,10 +14,27 @@ import {
   DropdownMenuTrigger,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
+import TrialBanner from '@/components/TrialBanner';
+import UpgradeModal from '@/components/UpgradeModal';
 
 const AppLayout: React.FC = () => {
-  const { profile, roles, signOut } = useAuth();
+  const { profile, roles, signOut, organization } = useAuth();
   const navigate = useNavigate();
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [orgCountry, setOrgCountry] = useState('IN');
+
+  // Fetch country from organizations table (not yet on the Organization type)
+  useEffect(() => {
+    if (!organization?.id) return;
+    supabase
+      .from('organizations')
+      .select('country')
+      .eq('id', organization.id)
+      .single()
+      .then(({ data }) => {
+        if (data && (data as any).country) setOrgCountry((data as any).country);
+      });
+  }, [organization?.id]);
 
   return (
     <SidebarProvider>
@@ -74,7 +92,13 @@ const AppLayout: React.FC = () => {
             </div>
           </header>
           <main className="flex-1 p-4 md:p-6 overflow-auto">
+            <TrialBanner onUpgradeClick={() => setUpgradeModalOpen(true)} />
             <Outlet />
+            <UpgradeModal
+              open={upgradeModalOpen}
+              onClose={() => setUpgradeModalOpen(false)}
+              country={orgCountry}
+            />
           </main>
         </div>
       </div>

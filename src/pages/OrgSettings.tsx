@@ -12,8 +12,10 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
-import { Building2, Coins, Tags, Loader2, Plus, Pencil, Trash2, CreditCard, Zap, Crown, Users, Receipt, Check } from 'lucide-react';
+import { Building2, Coins, Tags, Loader2, Plus, Pencil, Trash2, CreditCard, Zap, Crown, Users, Receipt, Check, Globe } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePlanLimit } from '@/hooks/usePlanLimit';
+import UpgradeModal from '@/components/UpgradeModal';
 import type { Organization, ExpenseCategory, OrgCurrency, PlanType, CategoryLimit } from '@/types/database';
 
 const planBadgeStyles: Record<PlanType, string> = {
@@ -27,12 +29,14 @@ const OrgSettings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('general');
   const billing = usePlanLimit();
   const [checkoutLoading, setCheckoutLoading] = useState<'pro' | 'enterprise' | null>(null);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
 
   // General
   const [orgName, setOrgName] = useState('');
   const [orgSlug, setOrgSlug] = useState('');
   const [corpEmail, setCorpEmail] = useState('');
   const [bizPhone, setBizPhone] = useState('');
+  const [orgCountry, setOrgCountry] = useState('IN');
   const [savingGeneral, setSavingGeneral] = useState(false);
 
   // Categories
@@ -62,6 +66,15 @@ const OrgSettings: React.FC = () => {
       setOrgSlug(organization.slug);
       setCorpEmail(organization.corporate_email);
       setBizPhone(organization.business_phone || '');
+      // Fetch country directly (not yet on the Organization type)
+      supabase
+        .from('organizations')
+        .select('country')
+        .eq('id', organization.id)
+        .single()
+        .then(({ data }) => {
+          if (data && (data as any).country) setOrgCountry((data as any).country);
+        });
     }
   }, [organization]);
 
@@ -103,7 +116,7 @@ const OrgSettings: React.FC = () => {
 
   // ---- General ----
   const saveGeneral = async () => {
-    if (!organization) return;
+    if (!organization || !profile?.org_id) return;
     setSavingGeneral(true);
     const { error } = await supabase
       .from('organizations')
@@ -112,16 +125,36 @@ const OrgSettings: React.FC = () => {
         slug: orgSlug.trim(),
         corporate_email: corpEmail.trim(),
         business_phone: bizPhone.trim() || null,
+        country: orgCountry,
         updated_at: new Date().toISOString(),
-      })
+      } as any)
       .eq('id', organization.id);
 
     if (error) {
       toast.error(error.message);
-    } else {
-      toast.success('Organization updated');
-      refreshOrg();
+      setSavingGeneral(false);
+      return;
     }
+
+    // Sync default currency to match billing region
+    const isIndia = orgCountry === 'IN';
+    const { error: currError } = await supabase
+      .from('org_currencies')
+      .update({
+        code: isIndia ? 'INR' : 'USD',
+        symbol: isIndia ? '₹' : '$',
+        name: isIndia ? 'Indian Rupee' : 'US Dollar',
+      })
+      .eq('org_id', profile.org_id)
+      .eq('is_default', true);
+
+    if (currError) {
+      console.warn('Default currency sync warning:', currError.message);
+    }
+
+    toast.success('Organization updated');
+    refreshOrg();
+    fetchCurrencies();
     setSavingGeneral(false);
   };
 
@@ -351,7 +384,31 @@ const OrgSettings: React.FC = () => {
                   <Label>Business Phone</Label>
                   <Input value={bizPhone} onChange={e => setBizPhone(e.target.value)} />
                 </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label><Globe className="inline h-4 w-4 mr-1 -mt-0.5" />Country / Billing Region</Label>
+                  <Select value={orgCountry} onValueChange={setOrgCountry}>
+                    <SelectTrigger id="orgCountry">
+                      <SelectValue placeholder="Select your country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="IN">India</SelectItem>
+                      <SelectItem value="US">United States</SelectItem>
+                      <SelectItem value="GB">United Kingdom</SelectItem>
+                      <SelectItem value="AU">Australia</SelectItem>
+                      <SelectItem value="CA">Canada</SelectItem>
+                      <SelectItem value="SG">Singapore</SelectItem>
+                      <SelectItem value="AE">United Arab Emirates</SelectItem>
+                      <SelectItem value="OTHER">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    India → ₹ INR. All other countries → $ USD.
+                  </p>
+                </div>
               </div>
+              <p className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2">
+                Changing country will update your default currency. You can still add other currencies in the Currencies tab.
+              </p>
               <Button onClick={saveGeneral} disabled={savingGeneral} className="bg-gradient-to-r from-primary to-accent">
                 {savingGeneral && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
@@ -606,11 +663,9 @@ const OrgSettings: React.FC = () => {
                           <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
                         </ul>
                         <Button
-                          onClick={() => handleUpgrade('pro')}
-                          disabled={checkoutLoading !== null}
+                          onClick={() => setUpgradeModalOpen(true)}
                           className="w-full bg-gradient-to-r from-primary to-accent"
                         >
-                          {checkoutLoading === 'pro' && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           Upgrade to Pro
                         </Button>
                       </CardContent>
@@ -728,6 +783,13 @@ const OrgSettings: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Upgrade Modal */}
+      <UpgradeModal
+        open={upgradeModalOpen}
+        onClose={() => setUpgradeModalOpen(false)}
+        country={orgCountry}
+      />
     </div>
   );
 };

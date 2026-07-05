@@ -160,12 +160,38 @@ Deno.serve(async (req) => {
     }
 
     if (action === "delete") {
-      const { error } = await admin.auth.admin.deleteUser(targetUserId);
-      if (error) {
-        return json(400, { error: error.message });
+      // Step 1: Deactivate in public.users
+      const { error: deactivateError } = await admin
+        .from("users")
+        .update({ is_active: false, status: "inactive" })
+        .eq("id", targetUserId);
+      if (deactivateError) {
+        return json(500, { error: "Database error deactivating user" });
       }
 
-      return json(200, { success: true, action, user_id: targetUserId });
+      // Step 2: Remove from user_roles so they lose all app access
+      const { error: roleError } = await admin
+        .from("user_roles")
+        .delete()
+        .eq("user_id", targetUserId);
+      if (roleError) {
+        return json(500, { error: "Database error removing user roles" });
+      }
+
+      // Step 3: Ban the user in Supabase Auth so they cannot log in
+      // even with an existing session or by resetting password
+      // (banned_until far in the future = effectively permanent ban)
+      const { error: banError } = await admin.auth.admin.updateUserById(
+        targetUserId,
+        { ban_duration: "876600h" }, // 100 years
+      );
+      if (banError) {
+        // Non-fatal — user is already deactivated and role-stripped.
+        // Log but don't fail the whole operation.
+        console.error("Failed to ban auth user:", banError.message);
+      }
+
+      return json(200, { success: true, action: "deleted", user_id: targetUserId });
     }
 
     if (action === "update_role" || (action === "update_user" && "role" in body)) {
