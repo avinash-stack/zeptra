@@ -1433,6 +1433,11 @@ BEGIN
     RAISE EXCEPTION 'Access denied: org mismatch';
   END IF;
 
+  -- Verify caller has admin or finance role
+  IF NOT (public.has_role(auth.uid(), 'admin') OR public.has_role(auth.uid(), 'finance')) THEN
+    RAISE EXCEPTION 'Access denied: requires admin or finance role';
+  END IF;
+
   -- Look up org's default currency for unconvertedCount check
   SELECT code INTO _default_currency
   FROM public.org_currencies
