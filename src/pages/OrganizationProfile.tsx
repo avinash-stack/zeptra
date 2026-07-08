@@ -416,14 +416,14 @@ const OrganizationProfile: React.FC = () => {
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="companyName" {...required}>Company Name</Label>
-                    <Input id="companyName" placeholder="Acme Corporation" value={form.companyName} onChange={onChange("companyName")} />
+                    <Input id="companyName" placeholder="Your Company" value={form.companyName} onChange={onChange("companyName")} />
                     {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="companySlug" {...required}>Company Slug</Label>
                     <Input
                       id="companySlug"
-                      placeholder="acme-corporation"
+                      placeholder="your-company"
                       value={form.companySlug}
                       onChange={(event) => { setSlugEdited(true); onChange("companySlug")(event); }}
                     />
@@ -476,11 +476,11 @@ const OrganizationProfile: React.FC = () => {
                 <div className="grid gap-6 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" placeholder="Alex" value={form.firstName} onChange={onChange("firstName")} />
+                    <Input id="firstName" placeholder="First Name" value={form.firstName} onChange={onChange("firstName")} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" placeholder="Smith" value={form.lastName} onChange={onChange("lastName")} />
+                    <Input id="lastName" placeholder="Last Name" value={form.lastName} onChange={onChange("lastName")} />
                   </div>
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="adminEmail" {...required}>Admin Email</Label>
