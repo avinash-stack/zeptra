@@ -34,7 +34,7 @@ export function exportToTallyXML(expenses: ExpenseWithDetails[], orgName: string
     const catName = (e as any).expense_categories?.name || 'Uncategorized';
     const glCode = (e as any).expense_categories?.gl_code || catName;
     const ref = `EXP-${e.id.slice(0,8).toUpperCase()}`;
-    const amount = Number(e.amount).toFixed(2);
+    const amount = Number(e.base_amount ?? e.amount).toFixed(2);
     
     return `        <TALLYMESSAGE xmlns:UDF="TallyUDF">
           <VOUCHER VCHTYPE="Payment" ACTION="Create" OBJVIEW="Accounting Voucher View">

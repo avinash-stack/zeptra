@@ -62,6 +62,8 @@ async function createPresignedUrl(
   region: string,
   bucket: string,
   key: string,
+  fileSize: number,
+  fileType: string,
   expiresInSeconds = 300,
 ) {
   const method = "PUT";
@@ -79,10 +81,10 @@ async function createPresignedUrl(
   // Query string must be sorted by parameter name
   const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
   const credential = encodeURIComponent(`${accessKeyId}/${credentialScope}`);
-  const canonicalQuerystring = `X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=${credential}&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresInSeconds}&X-Amz-SignedHeaders=host`;
+  const canonicalQuerystring = `X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=${credential}&X-Amz-Date=${amzDate}&X-Amz-Expires=${expiresInSeconds}&X-Amz-SignedHeaders=content-length%3Bcontent-type%3Bhost`;
 
-  const canonicalHeaders = `host:${host}\n`;
-  const signedHeaders = "host";
+  const canonicalHeaders = `content-length:${fileSize}\ncontent-type:${fileType}\nhost:${host}\n`;
+  const signedHeaders = "content-length;content-type;host";
   const payloadHash = "UNSIGNED-PAYLOAD"; // standard for presigned URLs
 
   const canonicalRequest = `${method}\n${canonicalUri}\n${canonicalQuerystring}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
@@ -243,6 +245,8 @@ Deno.serve(async (req) => {
       region,
       bucket,
       key,
+      body.file_size,
+      String(body.file_type),
     );
 
     return json(200, { upload_url, receipt_key: key });

@@ -184,6 +184,19 @@ Deno.serve(async (req) => {
         if (!invitedUserId) throw new Error("Invite succeeded but no user ID returned");
       }
 
+      // --- Check if user already exists in another organization ---
+      if (invitedUserId) {
+        const { data: existingProfile } = await admin
+          .from("users")
+          .select("org_id")
+          .eq("id", invitedUserId)
+          .single();
+
+        if (existingProfile && existingProfile.org_id && existingProfile.org_id !== callerProfile.org_id) {
+          throw new Error("User already belongs to another organization");
+        }
+      }
+
       // --- Upsert profile and set role BEFORE sending email ---
       const { error: profileError } = await admin.from("users").upsert(
         { id: invitedUserId, org_id: callerProfile.org_id, name, email, manager_id: managerId, tag, status: "active", is_active: true },

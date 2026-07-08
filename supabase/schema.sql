@@ -1298,7 +1298,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT COALESCE(SUM(e.amount), 0)
+  SELECT COALESCE(SUM(COALESCE(e.base_amount, e.amount)), 0)
   FROM public.expenses e
   JOIN public.expense_categories c ON c.id = e.category_id
   WHERE e.category_id = p_category_id
