@@ -171,7 +171,24 @@ const OrganizationProfile: React.FC = () => {
     try {
       const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim() || form.adminEmail.trim();
 
-      // 1. Sign up
+      // 0. Pre-check slug availability (granted to anon — works before sign-up)
+      const { data: slugAvailable, error: slugCheckError } = await supabase.rpc("check_slug_available", {
+        _slug: form.companySlug.trim(),
+      });
+
+      if (slugCheckError) {
+        console.error("Slug check error:", slugCheckError);
+        toast.error("Could not verify organization URL availability. Please try again.");
+        return;
+      }
+
+      if (slugAvailable === false) {
+        setErrors((prev) => ({ ...prev, companySlug: "This organization URL is already taken." }));
+        toast.error("This organization URL is already taken. Please choose a different slug.");
+        return;
+      }
+
+      // 1. Sign up — if already registered, fall through to sign in
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: form.adminEmail.trim().toLowerCase(),
         password: form.password,
@@ -189,28 +206,48 @@ const OrganizationProfile: React.FC = () => {
         },
       });
 
-      if (signUpError) throw signUpError;
-
-      // 2. Ensure session
-      if (!signUpData.session) {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: form.adminEmail.trim().toLowerCase(),
-          password: form.password,
-        });
-        if (signInError) throw signInError;
+      if (signUpError) {
+        if (
+          signUpError.message.includes("already been registered") ||
+          signUpError.message.includes("already exists")
+        ) {
+          // User retrying after a slug error — sign in to continue the flow
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: form.adminEmail.trim().toLowerCase(),
+            password: form.password,
+          });
+          if (signInError) {
+            toast.error("This email is already registered. Please use the correct password or sign in.");
+            return;
+          }
+        } else {
+          throw signUpError;
+        }
+      } else {
+        // 2. Ensure session for newly signed-up user
+        if (!signUpData.session) {
+          const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: form.adminEmail.trim().toLowerCase(),
+            password: form.password,
+          });
+          if (signInError) throw signInError;
+        }
       }
 
-      // 3. Wait for DB trigger
+      // 3. Wait for DB trigger (handle_new_user)
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      // 4. Ensure user profile
+      // 4. Ensure user profile exists (critical — do not swallow errors)
       const { error: ensureError } = await supabase.rpc("ensure_user_profile", {
         _name: fullName,
         _email: form.adminEmail.trim().toLowerCase(),
         _first_name: form.firstName.trim() || null,
         _last_name: form.lastName.trim() || null,
       });
-      if (ensureError) console.warn("ensure_user_profile warning:", ensureError.message);
+      if (ensureError) {
+        console.error("ensure_user_profile failed:", ensureError.message);
+        throw new Error("Failed to initialize user profile. Please try again.");
+      }
 
       // 5. Create organization via RPC
       const { data: newOrgId, error: orgError } = await supabase.rpc("create_organization", {
@@ -223,14 +260,35 @@ const OrganizationProfile: React.FC = () => {
 
       if (orgError || !newOrgId) {
         console.error("create_organization RPC error:", orgError);
-        toast.error(
-          orgError?.message || "Failed to create organization. Please try again."
-        );
+        let errorMessage = orgError?.message || "Failed to create organization. Please try again.";
+        if (errorMessage.includes("already belongs to an organization")) {
+          errorMessage = "This email is already registered to an existing organization.";
+        } else if (errorMessage.includes("unique") || errorMessage.includes("duplicate")) {
+          errorMessage = "This organization URL is already taken. Please choose a different slug.";
+          setErrors((prev) => ({ ...prev, companySlug: "This organization URL is already taken." }));
+        }
+        toast.error(errorMessage);
         return;
       }
 
       setOrgId(newOrgId as string);
       console.log("Organization created with ID:", newOrgId);
+
+      // 6. Send welcome email (non-blocking — does not affect data integrity)
+      supabase.functions
+        .invoke("welcome-email", {
+          body: {
+            org_name: form.companyName.trim(),
+            admin_name: fullName,
+            admin_email: form.adminEmail.trim().toLowerCase(),
+          },
+        })
+        .then(({ error: emailError }) => {
+          if (emailError) console.error("Welcome email delivery failed:", emailError.message);
+        })
+        .catch((err) => {
+          console.error("Welcome email invocation failed:", err);
+        });
 
       await reloadAll();
       toast.success("Organization created successfully!");
@@ -240,9 +298,7 @@ const OrganizationProfile: React.FC = () => {
       let message = "Failed to create organization";
       if (error instanceof Error) {
         message = error.message;
-        if (message.includes("already been registered") || message.includes("already exists")) {
-          message = "This email is already registered. Please use a different email or sign in.";
-        } else if (message.includes("Database error")) {
+        if (message.includes("Database error")) {
           message = "Database setup error. Please ensure the database schema has been applied.";
         } else if (message.includes("signups not allowed") || message.includes("Signups not allowed")) {
           message = "Signups are disabled in your Supabase project. Enable them in Authentication → Settings.";

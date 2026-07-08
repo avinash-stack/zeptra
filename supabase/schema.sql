@@ -574,6 +574,72 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================
+-- 14b. RPC: Check slug availability (anon-accessible)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.check_slug_available(_slug TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT NOT EXISTS (SELECT 1 FROM public.organizations WHERE slug = _slug);
+$$;
+
+-- Allow pre-authentication slug checks (slugs are public URL identifiers)
+GRANT EXECUTE ON FUNCTION public.check_slug_available(TEXT) TO anon;
+GRANT EXECUTE ON FUNCTION public.check_slug_available(TEXT) TO authenticated;
+
+-- ============================================================
+-- 14c. RPC: Ensure user profile exists (fallback if trigger delayed)
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.ensure_user_profile(
+  _name TEXT DEFAULT NULL,
+  _email TEXT DEFAULT NULL,
+  _first_name TEXT DEFAULT NULL,
+  _last_name TEXT DEFAULT NULL
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _uid UUID := auth.uid();
+  _auth_email TEXT;
+BEGIN
+  IF _uid IS NULL THEN RAISE EXCEPTION 'Not authenticated'; END IF;
+
+  -- If profile already exists, nothing to do
+  IF EXISTS (SELECT 1 FROM public.users WHERE id = _uid) THEN
+    RETURN;
+  END IF;
+
+  -- Resolve email from auth.users if not provided
+  IF _email IS NULL OR _email = '' THEN
+    SELECT email INTO _auth_email FROM auth.users WHERE id = _uid;
+  ELSE
+    _auth_email := _email;
+  END IF;
+
+  -- Create the profile
+  INSERT INTO public.users (id, name, email, first_name, last_name)
+  VALUES (
+    _uid,
+    COALESCE(NULLIF(_name, ''), _auth_email, 'User'),
+    COALESCE(_auth_email, ''),
+    NULLIF(_first_name, ''),
+    NULLIF(_last_name, '')
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  -- Default role
+  INSERT INTO public.user_roles (user_id, role) VALUES (_uid, 'employee')
+  ON CONFLICT (user_id, role) DO NOTHING;
+END;
+$$;
+
+-- ============================================================
 -- 15. RPC: Create organization (replaces edge function)
 -- ============================================================
 CREATE OR REPLACE FUNCTION public.create_organization(
@@ -596,6 +662,11 @@ DECLARE
 BEGIN
   IF _uid IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  -- Guard: prevent re-assignment to a new org
+  IF EXISTS (SELECT 1 FROM public.users WHERE id = _uid AND org_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'User already belongs to an organization';
   END IF;
 
   -- Create the organization (now includes country)
