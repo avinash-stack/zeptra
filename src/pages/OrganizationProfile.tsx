@@ -234,8 +234,19 @@ const OrganizationProfile: React.FC = () => {
         }
       }
 
-      // 3. Wait for DB trigger (handle_new_user)
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // 3. Wait for public.users row (DB trigger or ensure_user_profile)
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const currentUid = currentSession?.user?.id;
+      let profileExists = false;
+      for (let i = 0; i < 10; i++) {
+        const { data: profileRow } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', currentUid!)
+          .single();
+        if (profileRow) { profileExists = true; break; }
+        await new Promise((r) => setTimeout(r, 300));
+      }
 
       // 4. Ensure user profile exists (critical — do not swallow errors)
       const { error: ensureError } = await supabase.rpc("ensure_user_profile", {
@@ -246,7 +257,9 @@ const OrganizationProfile: React.FC = () => {
       });
       if (ensureError) {
         console.error("ensure_user_profile failed:", ensureError.message);
-        throw new Error("Failed to initialize user profile. Please try again.");
+        await supabase.auth.signOut();
+        toast.error("Account setup failed. Please try again.");
+        return;
       }
 
       // 5. Create organization via RPC
@@ -260,14 +273,20 @@ const OrganizationProfile: React.FC = () => {
 
       if (orgError || !newOrgId) {
         console.error("create_organization RPC error:", orgError);
-        let errorMessage = orgError?.message || "Failed to create organization. Please try again.";
-        if (errorMessage.includes("already belongs to an organization")) {
-          errorMessage = "This email is already registered to an existing organization.";
-        } else if (errorMessage.includes("unique") || errorMessage.includes("duplicate")) {
-          errorMessage = "This organization URL is already taken. Please choose a different slug.";
+        const rawMsg = orgError?.message || "";
+        const lower = rawMsg.toLowerCase();
+
+        if (lower.includes("already belongs to an organization")) {
+          toast.error("This email is already registered to an existing organization.");
+        } else if (lower.includes("unique") || lower.includes("duplicate") || lower.includes("already exists")) {
+          toast.error("An organization with this name or URL already exists. Please choose a different name.");
           setErrors((prev) => ({ ...prev, companySlug: "This organization URL is already taken." }));
+        } else {
+          toast.error(rawMsg || "Organization creation failed. Please try again.");
         }
-        toast.error(errorMessage);
+
+        // RPC failed — sign out the partially created user so they can retry cleanly
+        await supabase.auth.signOut();
         return;
       }
 

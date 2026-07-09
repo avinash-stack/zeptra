@@ -763,6 +763,8 @@ CREATE TABLE public.subscriptions (
   current_period_end TIMESTAMPTZ,
   trial_start TIMESTAMPTZ,
   trial_end TIMESTAMPTZ,
+  trial_warning_sent BOOLEAN DEFAULT false,
+  trial_ended_notification_sent BOOLEAN DEFAULT false,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now(),
   last_event_timestamp TIMESTAMPTZ
@@ -1186,7 +1188,10 @@ BEGIN
     IF OLD.is_active IS DISTINCT FROM NEW.is_active THEN
       RAISE EXCEPTION 'Users cannot change their own active status';
     END IF;
-    IF OLD.org_id IS DISTINCT FROM NEW.org_id THEN
+    -- Only block org_id change if user ALREADY has an org.
+    -- New users (org_id IS NULL) are always allowed to set their org.
+    IF OLD.org_id IS NOT NULL
+       AND OLD.org_id IS DISTINCT FROM NEW.org_id THEN
       RAISE EXCEPTION 'Users cannot change their own organization';
     END IF;
   END IF;

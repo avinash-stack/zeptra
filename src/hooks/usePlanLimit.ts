@@ -29,8 +29,12 @@ interface PlanLimitState {
   trialDaysRemaining: number;
   /** True when trial existed and has passed */
   trialExpired: boolean;
+  /** True when 3 or fewer days remain in an active trial */
+  trialWarning: boolean;
   /** Trial end date (null if no trial) */
   trialEnd: Date | null;
+  /** True when trial expired AND org exceeds free plan limits */
+  isTrialBlockRequired: boolean;
 }
 
 export function usePlanLimit(): PlanLimitState {
@@ -61,22 +65,15 @@ export function usePlanLimit(): PlanLimitState {
       const sub = subData as Subscription | null;
       setSubscription(sub);
 
-      // Raw plan from DB
       const rawPlan: PlanType = sub?.plan || 'free';
 
-      // Trial computation
       const now = new Date();
       const trialEndRaw = (sub as any)?.trial_end;
-      const trialStartRaw = (sub as any)?.trial_start;
       const trialEndDate = trialEndRaw ? new Date(trialEndRaw) : null;
-      const trialStartDate = trialStartRaw ? new Date(trialStartRaw) : null;
       const isInTrialNow = trialEndDate ? now < trialEndDate : false;
-      const trialHasExpired = trialEndDate ? now > trialEndDate : false;
 
-      // Effective plan: during trial, free users get pro limits.
-      // After trial, they revert to free. If admin manually set 'pro'
-      // in DB (payment confirmed), they stay pro indefinitely.
-      const effectivePlan: PlanType = (rawPlan === 'free' && isInTrialNow) ? 'pro' : rawPlan;
+      // During trial: Pro access. After trial: depends on plan in DB.
+      const effectivePlan: PlanType = isInTrialNow ? 'pro' : rawPlan;
 
       const [
         { data: limitData },
@@ -102,25 +99,26 @@ export function usePlanLimit(): PlanLimitState {
     fetchAll();
   }, [fetchAll]);
 
-  // Raw plan from DB
   const plan: PlanType = subscription?.plan || 'free';
 
-  // Trial values (recomputed from subscription for return)
   const now = new Date();
   const trialEndRaw = (subscription as any)?.trial_end;
-  const trialStartRaw = (subscription as any)?.trial_start;
   const trialEnd = trialEndRaw ? new Date(trialEndRaw) : null;
-  const trialStart = trialStartRaw ? new Date(trialStartRaw) : null;
   const isInTrial = trialEnd ? now < trialEnd : false;
+  const trialExpired = trialEnd ? now > trialEnd : false;
   const trialDaysRemaining = trialEnd
     ? Math.max(0, Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
     : 0;
-  const trialExpired = trialEnd ? now > trialEnd : false;
+  const trialWarning = trialDaysRemaining <= 3 && isInTrial;
 
-  // Effective plan for limit enforcement
-  const effectivePlan: PlanType = (plan === 'free' && isInTrial) ? 'pro' : plan;
+  // During trial: Pro access. Manually upgraded to pro: always pro after trial.
+  const effectivePlan: PlanType = isInTrial ? 'pro' : plan;
 
-  // null means unlimited
+  const isTrialBlockRequired =
+    trialExpired &&
+    plan === 'free' &&
+    (userCount > 5 || expenseCount > 50);
+
   const userLimitReached = limits
     ? limits.max_users !== null && userCount >= limits.max_users
     : false;
@@ -154,6 +152,8 @@ export function usePlanLimit(): PlanLimitState {
     isInTrial,
     trialDaysRemaining,
     trialExpired,
+    trialWarning,
     trialEnd,
+    isTrialBlockRequired,
   };
 }
