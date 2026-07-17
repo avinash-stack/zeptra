@@ -11,18 +11,18 @@ const Landing: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-background font-sans text-foreground selection:bg-primary/20">
+    <div className="min-h-screen bg-background text-foreground selection:bg-primary/20" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       {/* 1. STICKY HEADER / NAV */}
       <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <div className="flex items-center">
-            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="h-10 w-auto object-contain" onError={(e) => { e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Ik0xMiAyTDQgMjJMMTIgMThMMjAgMjJMMTIgMloiLz48L3N2Zz4=' }} />
+            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="h-10 w-auto max-w-[140px] object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden'); }} />
+            <span className="hidden text-xl font-bold text-foreground">Zeptra</span>
           </div>
 
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
-            {/* <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a> */}
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
@@ -37,17 +37,21 @@ const Landing: React.FC = () => {
           <button 
             className="md:hidden p-2 text-foreground"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
           >
             {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </div>
 
-        {/* Mobile menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-border bg-background px-4 py-4 space-y-4 shadow-lg">
+        {/* Mobile menu with animation */}
+        <div
+          className={`md:hidden border-t border-border bg-background px-4 shadow-lg overflow-hidden transition-all duration-300 ease-in-out ${
+            mobileMenuOpen ? 'max-h-80 py-4 opacity-100' : 'max-h-0 py-0 opacity-0'
+          }`}
+        >
+          <div className="space-y-4">
             <a href="#features" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Features</a>
             <a href="#how-it-works" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>How it works</a>
-            {/* <a href="#pricing" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Pricing</a> */}
             <div className="pt-4 flex flex-col gap-2">
               <Button variant="outline" asChild className="w-full">
                 <Link to="/login">Login</Link>
@@ -57,16 +61,16 @@ const Landing: React.FC = () => {
               </Button>
             </div>
           </div>
-        )}
+        </div>
       </header>
 
       <main>
         {/* 2. HERO SECTION */}
         <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
           <div className="lg:flex lg:items-center lg:gap-12">
-            <div className="flex-1 text-center lg:text-left">
+            <div className="flex-1 text-center lg:text-left animate-fade-in-up">
               <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-sm font-medium text-primary mb-6">
-                Built for Indian SMBs & growing teams
+                Built for Indian SMBs &amp; growing teams
               </div>
               <h1 className="text-5xl md:text-7xl font-extrabold leading-tight text-foreground max-w-4xl mx-auto lg:mx-0 tracking-tight">
                 Expense management your team will actually use
@@ -76,7 +80,7 @@ const Landing: React.FC = () => {
               </p>
               
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
-                <Button asChild size="lg" className="h-14 px-8 bg-primary text-white hover:bg-primary/90 text-lg w-full sm:w-auto shadow-lg shadow-primary/25">
+                <Button asChild size="lg" className="h-14 px-8 bg-gradient-to-r from-primary to-accent text-white hover:opacity-90 text-lg w-full sm:w-auto shadow-lg shadow-primary/25">
                   <Link to="/create-organization">Create your organization</Link>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="h-14 px-8 text-lg w-full sm:w-auto border-border hover:bg-muted">
@@ -92,7 +96,7 @@ const Landing: React.FC = () => {
             </div>
 
             {/* Hero Visual: Inline Mock Expense Card */}
-            <div className="mt-16 lg:mt-0 flex-1 flex justify-center lg:justify-end">
+            <div className="mt-16 lg:mt-0 flex-1 flex justify-center lg:justify-end animate-fade-in-up animation-delay-200">
               <div className="relative w-full max-w-md bg-card border border-border rounded-2xl p-6 shadow-2xl shadow-foreground/5 transform rotate-2 hover:rotate-0 transition-transform duration-300">
                 <div className="flex justify-between items-start mb-6">
                   <div>
@@ -114,11 +118,12 @@ const Landing: React.FC = () => {
                   </div>
                 </div>
 
+                {/* Progress bar — fixed z-index */}
                 <div className="relative pt-2">
-                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-border -z-10 translate-y-[-50%]"></div>
-                  <div className="absolute top-1/2 left-0 w-1/3 h-0.5 bg-primary -z-10 translate-y-[-50%]"></div>
+                  <div className="absolute top-1/2 left-0 w-full h-0.5 bg-border translate-y-[-50%]"></div>
+                  <div className="absolute top-1/2 left-0 w-1/3 h-0.5 bg-primary translate-y-[-50%]"></div>
                   
-                  <div className="flex justify-between relative">
+                  <div className="flex justify-between relative z-10">
                     <div className="flex flex-col items-center gap-2">
                       <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center ring-4 ring-card">
                         <CheckCircle className="w-3.5 h-3.5 text-white" />
@@ -171,7 +176,7 @@ const Landing: React.FC = () => {
 
         {/* 4. FEATURES SECTION */}
         <section id="features" className="py-24 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16">
+          <div className="text-center max-w-3xl mx-auto mb-16 animate-fade-in-up">
             <h2 className="text-3xl md:text-5xl font-bold text-foreground mb-6">Everything finance teams need</h2>
             <p className="text-xl text-muted-foreground">
               No training required. Roles, rules, and receipts — handled natively.
@@ -211,8 +216,8 @@ const Landing: React.FC = () => {
                 desc: "Mobile-first design. Submit expenses right after they happen — no waiting until end of month."
               }
             ].map((feature, i) => (
-              <div key={i} className="bg-card border border-border rounded-xl p-8 hover:shadow-lg transition-shadow duration-300">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+              <div key={i} className="bg-card border border-border rounded-xl p-8 hover:shadow-lg hover:border-primary/20 transition-all duration-300 group">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-6 group-hover:bg-primary/20 transition-colors">
                   <feature.icon className="w-6 h-6 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-3">{feature.title}</h3>
@@ -225,33 +230,33 @@ const Landing: React.FC = () => {
         {/* 5. HOW IT WORKS */}
         <section id="how-it-works" className="py-24 bg-muted/20 border-y border-border">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <h2 className="text-3xl md:text-5xl font-bold text-center text-foreground mb-16">Up and running in 5 minutes</h2>
+            <h2 className="text-3xl md:text-5xl font-bold text-center text-foreground mb-16 animate-fade-in-up">Up and running in 5 minutes</h2>
             
             <div className="relative flex flex-col md:flex-row gap-12 md:gap-8 justify-between">
               {/* Connecting line (desktop) */}
-              <div className="hidden md:block absolute top-1/2 left-[15%] right-[15%] h-0.5 border-t-2 border-dashed border-border -z-10 translate-y-[-16px]"></div>
+              <div className="hidden md:block absolute top-1/2 left-[15%] right-[15%] h-0.5 border-t-2 border-dashed border-border translate-y-[-16px]"></div>
 
-              <div className="flex-1 relative bg-background rounded-2xl p-8 border border-border shadow-sm text-center">
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-5xl font-black text-primary/10 select-none">01</div>
-                <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6 border-4 border-background">
+              <div className="flex-1 relative bg-background rounded-2xl pt-12 pb-8 px-8 border border-border shadow-sm text-center">
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-5xl font-black text-primary/10 select-none pointer-events-none">01</div>
+                <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6 border-4 border-background relative z-10">
                   <Building2 className="w-8 h-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-2">Create your org workspace</h3>
                 <p className="text-muted-foreground">Setup your brand, default currency, and basic settings in seconds.</p>
               </div>
 
-              <div className="flex-1 relative bg-background rounded-2xl p-8 border border-border shadow-sm text-center">
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-5xl font-black text-primary/10 select-none">02</div>
-                <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6 border-4 border-background">
+              <div className="flex-1 relative bg-background rounded-2xl pt-12 pb-8 px-8 border border-border shadow-sm text-center">
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-5xl font-black text-primary/10 select-none pointer-events-none">02</div>
+                <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6 border-4 border-background relative z-10">
                   <Mail className="w-8 h-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-2">Invite your team by email</h3>
                 <p className="text-muted-foreground">Assign roles and L1 managers securely via custom email invites.</p>
               </div>
 
-              <div className="flex-1 relative bg-background rounded-2xl p-8 border border-border shadow-sm text-center">
-                <div className="absolute -top-6 left-1/2 -translate-x-1/2 text-5xl font-black text-primary/10 select-none">03</div>
-                <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6 border-4 border-background">
+              <div className="flex-1 relative bg-background rounded-2xl pt-12 pb-8 px-8 border border-border shadow-sm text-center">
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 text-5xl font-black text-primary/10 select-none pointer-events-none">03</div>
+                <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center mb-6 border-4 border-background relative z-10">
                   <CheckSquare className="w-8 h-8 text-primary" />
                 </div>
                 <h3 className="text-xl font-semibold text-foreground mb-2">Start submitting & approving</h3>
@@ -336,8 +341,11 @@ const Landing: React.FC = () => {
 
         {/* 7. FINAL CTA SECTION */}
         <section className="py-24 px-4 sm:px-6 lg:px-8">
-          <div className="mx-auto max-w-4xl bg-primary rounded-3xl p-12 md:p-16 text-center shadow-2xl shadow-primary/20 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-primary to-accent opacity-50 mix-blend-overlay"></div>
+          <div className="mx-auto max-w-4xl bg-gradient-to-br from-primary to-accent rounded-3xl p-12 md:p-16 text-center shadow-2xl shadow-primary/20 relative overflow-hidden">
+            <div className="absolute inset-0 opacity-20">
+              <div className="absolute top-0 left-0 w-72 h-72 bg-white/10 rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2"></div>
+              <div className="absolute bottom-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl translate-x-1/3 translate-y-1/3"></div>
+            </div>
             <div className="relative z-10">
               <h2 className="text-3xl md:text-5xl font-bold text-white mb-6 leading-tight">
                 Ready to replace your expense spreadsheet?
@@ -359,7 +367,8 @@ const Landing: React.FC = () => {
       <footer className="border-t border-border bg-background py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
-            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="h-6 w-auto grayscale opacity-70 object-contain" onError={(e) => { e.currentTarget.style.display = 'none' }} />
+            <img src="/zeptra-logo.png" alt="Zeptra Logo" className="h-6 w-auto max-w-[100px] grayscale opacity-70 object-contain" onError={(e) => { e.currentTarget.style.display = 'none'; (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden'); }} />
+            <span className="hidden text-sm font-semibold text-muted-foreground">Zeptra</span>
           </div>
           
           <div className="text-sm text-muted-foreground text-center md:text-left">
@@ -367,8 +376,8 @@ const Landing: React.FC = () => {
           </div>
 
           <div className="flex gap-6 text-sm text-muted-foreground">
-            <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-            <a href="#" className="hover:text-foreground transition-colors">Terms</a>
+            <span className="cursor-default">Privacy</span>
+            <span className="cursor-default">Terms</span>
           </div>
         </div>
       </footer>
