@@ -53,14 +53,13 @@ const AppLayout: React.FC = () => {
 
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full flex-col">
-        <div className="px-4 pt-4 md:px-6">
-          <TrialBanner onUpgradeClick={() => setUpgradeOpen(true)} />
-        </div>
-        <div className="flex flex-1 w-full">
-          <AppSidebar />
-          <div className="flex-1 flex flex-col">
-            <header className="h-14 flex items-center justify-between border-b bg-card px-4">
+      <div className="min-h-screen flex w-full">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="px-4 pt-4 md:px-6">
+            <TrialBanner onUpgradeClick={() => setUpgradeOpen(true)} />
+          </div>
+          <header className="h-14 flex items-center justify-between border-b bg-card px-4">
               <div className="flex items-center gap-2">
                 <SidebarTrigger />
                 <h2 className="text-sm font-medium text-muted-foreground hidden sm:block">
@@ -113,7 +112,6 @@ const AppLayout: React.FC = () => {
               <Outlet />
             </main>
           </div>
-        </div>
         <UpgradeModal
           open={upgradeOpen}
           onClose={() => setUpgradeOpen(false)}
