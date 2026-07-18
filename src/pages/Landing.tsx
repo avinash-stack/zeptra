@@ -1,17 +1,14 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { 
   Menu, X, CheckCircle, Receipt, ShieldCheck, GitBranch, 
   Tag, BarChart2, Smartphone, Building2, Mail, CheckSquare,
   ArrowRight
 } from 'lucide-react';
-import { appUrl, isSingleOrigin } from '@/lib/domains';
+import { appUrl } from '@/lib/domains';
 
+/** Always navigates to the app domain via full-page load */
 const AppLink = React.forwardRef<HTMLAnchorElement, { to: string, children?: React.ReactNode, className?: string, onClick?: () => void }>(({ to, children, ...props }, ref) => {
-  if (isSingleOrigin) {
-    return <Link to={to} ref={ref as any} {...props}>{children}</Link>;
-  }
   return <a href={appUrl(to)} ref={ref} {...props}>{children}</a>;
 });
 AppLink.displayName = 'AppLink';
