@@ -7,6 +7,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AppLayout from "@/components/AppLayout";
 import type { AppRole } from "@/types/database";
+import { isLandingSite, isAppSite, isSingleOrigin } from "@/lib/domains";
 
 const Landing = lazy(() => import("@/pages/Landing"));
 const Login = lazy(() => import("@/pages/Login"));
@@ -106,43 +107,60 @@ const App = () => (
           <BrowserRouter>
             <Suspense fallback={<PageSpinner fullScreen />}>
               <Routes>
-                <Route path="/" element={<AuthRoute><Landing /></AuthRoute>} />
-                <Route path="/create-organization" element={<OrganizationProfile />} />
-                <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
-                <Route path="/set-password" element={<SetPassword />} />
-                <Route path="/app" element={<ProtectedRoute deferProfile><AppLayout /></ProtectedRoute>}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="submit" element={<SubmitExpense />} />
-                  <Route path="expenses" element={<MyExpenses />} />
-                  <Route path="approvals" element={
-                    <ProtectedRoute allowedRoles={['admin', 'finance']} requireManager>
-                      <Approvals />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="all-expenses" element={
-                    <ProtectedRoute allowedRoles={['finance', 'admin']}>
-                      <AllExpenses />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="users" element={
-                    <ProtectedRoute allowedRoles={['admin', 'hr']}>
-                      <UserManagement />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="settings" element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <OrgSettings />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="audit" element={
-                    <ProtectedRoute allowedRoles={['admin']}>
-                      <AuditLog />
-                    </ProtectedRoute>
-                  } />
-                  <Route path="account" element={<AccountSettings />} />
-                  <Route path="help" element={<Help />} />
-                  <Route path="profile" element={<ProfilePage />} />
-                </Route>
+                {/* Landing Domain Routes */}
+                {(isLandingSite || isSingleOrigin) && (
+                  <Route path="/" element={<AuthRoute><Landing /></AuthRoute>} />
+                )}
+
+                {/* Catch-all for Landing Domain */}
+                {isLandingSite && (
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                )}
+
+                {/* App Domain Routes */}
+                {(isAppSite || isSingleOrigin) && (
+                  <>
+                    <Route path="/create-organization" element={<OrganizationProfile />} />
+                    <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+                    <Route path="/set-password" element={<SetPassword />} />
+                    <Route path="/app" element={<ProtectedRoute deferProfile><AppLayout /></ProtectedRoute>}>
+                      <Route index element={<Dashboard />} />
+                      <Route path="submit" element={<SubmitExpense />} />
+                      <Route path="expenses" element={<MyExpenses />} />
+                      <Route path="approvals" element={
+                        <ProtectedRoute allowedRoles={['admin', 'finance']} requireManager>
+                          <Approvals />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="all-expenses" element={
+                        <ProtectedRoute allowedRoles={['finance', 'admin']}>
+                          <AllExpenses />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="users" element={
+                        <ProtectedRoute allowedRoles={['admin', 'hr']}>
+                          <UserManagement />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="settings" element={
+                        <ProtectedRoute allowedRoles={['admin']}>
+                          <OrgSettings />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="audit" element={
+                        <ProtectedRoute allowedRoles={['admin']}>
+                          <AuditLog />
+                        </ProtectedRoute>
+                      } />
+                      <Route path="account" element={<AccountSettings />} />
+                      <Route path="help" element={<Help />} />
+                      <Route path="profile" element={<ProfilePage />} />
+                    </Route>
+                    {/* Optional: Add a root redirect for the app domain */}
+                    {isAppSite && <Route path="/" element={<Navigate to="/app" replace />} />}
+                  </>
+                )}
+                
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>

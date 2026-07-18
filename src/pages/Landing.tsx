@@ -6,6 +6,15 @@ import {
   Tag, BarChart2, Smartphone, Building2, Mail, CheckSquare,
   ArrowRight
 } from 'lucide-react';
+import { appUrl, isSingleOrigin } from '@/lib/domains';
+
+const AppLink = React.forwardRef<HTMLAnchorElement, { to: string, children?: React.ReactNode, className?: string, onClick?: () => void }>(({ to, children, ...props }, ref) => {
+  if (isSingleOrigin) {
+    return <Link to={to} ref={ref as any} {...props}>{children}</Link>;
+  }
+  return <a href={appUrl(to)} ref={ref} {...props}>{children}</a>;
+});
+AppLink.displayName = 'AppLink';
 
 const Landing: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -23,14 +32,15 @@ const Landing: React.FC = () => {
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
             <a href="#how-it-works" className="hover:text-foreground transition-colors">How it works</a>
+            <a href="#pricing" className="hover:text-foreground transition-colors">Pricing</a>
           </nav>
 
           <div className="hidden md:flex items-center gap-4">
             <Button variant="ghost" asChild className="text-foreground">
-              <Link to="/login">Login</Link>
+              <AppLink to="/login">Login</AppLink>
             </Button>
             <Button asChild className="bg-primary text-white hover:bg-primary/90">
-              <Link to="/create-organization">Get started free</Link>
+              <AppLink to="/create-organization">Get started free</AppLink>
             </Button>
           </div>
 
@@ -52,12 +62,13 @@ const Landing: React.FC = () => {
           <div className="space-y-4">
             <a href="#features" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Features</a>
             <a href="#how-it-works" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>How it works</a>
+            <a href="#pricing" className="block text-sm font-medium text-foreground p-2" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
             <div className="pt-4 flex flex-col gap-2">
               <Button variant="outline" asChild className="w-full">
-                <Link to="/login">Login</Link>
+                <AppLink to="/login">Login</AppLink>
               </Button>
               <Button asChild className="w-full bg-primary text-white hover:bg-primary/90">
-                <Link to="/create-organization">Get started free</Link>
+                <AppLink to="/create-organization">Get started free</AppLink>
               </Button>
             </div>
           </div>
@@ -81,10 +92,10 @@ const Landing: React.FC = () => {
               
               <div className="mt-10 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
                 <Button asChild size="lg" className="h-14 px-8 bg-gradient-to-r from-primary to-accent text-white hover:opacity-90 text-lg w-full sm:w-auto shadow-lg shadow-primary/25">
-                  <Link to="/create-organization">Create your organization</Link>
+                  <AppLink to="/create-organization">Create your organization</AppLink>
                 </Button>
                 <Button asChild size="lg" variant="outline" className="h-14 px-8 text-lg w-full sm:w-auto border-border hover:bg-muted">
-                  <Link to="/login">Login to existing org</Link>
+                  <AppLink to="/login">Login to existing org</AppLink>
                 </Button>
               </div>
 
@@ -266,8 +277,7 @@ const Landing: React.FC = () => {
           </div>
         </section>
 
-        {/* 6. PRICING TEASER — hidden for now */}
-        {false && (
+        {/* 6. PRICING TEASER */}
         <section id="pricing" className="py-24 bg-muted/40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="text-center mb-16">
@@ -291,7 +301,7 @@ const Landing: React.FC = () => {
                   ))}
                 </ul>
                 <Button asChild variant="outline" size="lg" className="w-full h-12 text-base border-border hover:bg-muted">
-                  <Link to="/create-organization">Get started</Link>
+                  <AppLink to="/create-organization">Get started</AppLink>
                 </Button>
               </div>
 
@@ -313,7 +323,7 @@ const Landing: React.FC = () => {
                   ))}
                 </ul>
                 <Button asChild size="lg" className="w-full h-12 bg-primary text-white hover:bg-primary/90 text-base shadow-lg shadow-primary/25">
-                  <Link to="/create-organization">Start free trial</Link>
+                  <AppLink to="/create-organization">Start free trial</AppLink>
                 </Button>
               </div>
 
@@ -331,13 +341,12 @@ const Landing: React.FC = () => {
                   ))}
                 </ul>
                 <Button asChild variant="outline" size="lg" className="w-full h-12 text-base border-border hover:bg-muted">
-                  <Link to="/create-organization">Contact sales</Link>
+                  <AppLink to="/create-organization">Contact sales</AppLink>
                 </Button>
               </div>
             </div>
           </div>
         </section>
-        )}
 
         {/* 7. FINAL CTA SECTION */}
         <section className="py-24 px-4 sm:px-6 lg:px-8">
@@ -354,9 +363,9 @@ const Landing: React.FC = () => {
                 Set up your org in 5 minutes. First 5 users free.
               </p>
               <Button asChild size="lg" className="h-14 px-10 bg-white text-primary hover:bg-white/90 text-lg font-bold shadow-xl">
-                <Link to="/create-organization">
+                <AppLink to="/create-organization">
                   Create your organization
-                </Link>
+                </AppLink>
               </Button>
             </div>
           </div>
