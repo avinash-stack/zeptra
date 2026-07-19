@@ -73,7 +73,7 @@ export function usePlanLimit(): PlanLimitState {
       const isInTrialNow = trialEndDate ? now < trialEndDate : false;
 
       // During trial: Pro access. After trial: depends on plan in DB.
-      const effectivePlan: PlanType = isInTrialNow ? 'pro' : rawPlan;
+      const effectivePlan: PlanType = (isInTrialNow && rawPlan === 'free') ? 'pro' : rawPlan;
 
       const [
         { data: limitData },
@@ -111,8 +111,8 @@ export function usePlanLimit(): PlanLimitState {
     : 0;
   const trialWarning = trialDaysRemaining <= 3 && isInTrial;
 
-  // During trial: Pro access. Manually upgraded to pro: always pro after trial.
-  const effectivePlan: PlanType = isInTrial ? 'pro' : plan;
+  // During trial: Pro access. Manually upgraded: retains upgraded plan.
+  const effectivePlan: PlanType = (isInTrial && plan === 'free') ? 'pro' : plan;
 
   const isTrialBlockRequired =
     trialExpired &&
