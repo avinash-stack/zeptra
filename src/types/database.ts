@@ -128,6 +128,7 @@ export interface PlanLimit {
   max_expenses_per_month: number | null;
   has_analytics: boolean;
   has_api: boolean;
+  has_export: boolean;
 }
 
 // ---- Notification Preferences ----

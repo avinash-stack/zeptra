@@ -16,6 +16,7 @@ import { AlertTriangle, Search, CheckCircle, XCircle, Download, Loader2, DollarS
 import { toast } from 'sonner';
 import { exportToCSV, exportToTallyXML } from '@/lib/exportUtils';
 import { logExport } from '@/lib/auditLogger';
+import { usePlanLimit } from '@/hooks/usePlanLimit';
 import type { ExpenseWithDetails, Profile } from '@/types/database';
 
 type FinanceExpenseStatus = 'pending_l1' | 'pending_l2' | 'approved' | 'rejected' | 'reimbursed';
@@ -40,6 +41,7 @@ const getErrorMessage = (error: unknown, fallback: string) => {
 
 const AllExpenses: React.FC = () => {
   const { user, hasAnyRole, organization } = useAuth();
+  const { canAccess } = usePlanLimit();
   const isFinance = hasAnyRole(['finance']);
 
   const [expenses, setExpenses] = useState<FinanceExpense[]>([]);
@@ -294,7 +296,7 @@ const AllExpenses: React.FC = () => {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">All Expenses</h1>
           <p className="text-muted-foreground mt-1">Organization-wide expense view</p>
         </div>
-        {(hasAnyRole(['admin', 'finance'])) && (
+        {(hasAnyRole(['admin', 'finance'])) && canAccess('export') && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">

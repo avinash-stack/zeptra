@@ -20,7 +20,7 @@ interface PlanLimitState {
   /** True when the org has hit the expense limit specifically */
   expenseLimitReached: boolean;
   /** Check access to a gated feature */
-  canAccess: (feature: 'analytics' | 'api') => boolean;
+  canAccess: (feature: 'analytics' | 'api' | 'export') => boolean;
   /** Re-fetch all billing data */
   refetch: () => Promise<void>;
   /** True when org is currently within the trial window */
@@ -129,10 +129,11 @@ export function usePlanLimit(): PlanLimitState {
 
   const usageExceeded = userLimitReached || expenseLimitReached;
 
-  const canAccess = (feature: 'analytics' | 'api'): boolean => {
+  const canAccess = (feature: 'analytics' | 'api' | 'export'): boolean => {
     if (!limits) return false;
     if (feature === 'analytics') return limits.has_analytics;
     if (feature === 'api') return limits.has_api;
+    if (feature === 'export') return limits.has_export;
     return false;
   };
 
