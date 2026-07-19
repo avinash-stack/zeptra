@@ -658,7 +658,7 @@ const OrgSettings: React.FC = () => {
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <ul className="space-y-2 text-sm">
-                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Up to 50 users</li>
+                          <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited users</li>
                           <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited expenses</li>
                           <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
                         </ul>
@@ -683,6 +683,7 @@ const OrgSettings: React.FC = () => {
                         <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited users</li>
                         <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Unlimited expenses</li>
                         <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Analytics dashboard</li>
+                        <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> Tally & CSV export</li>
                         <li className="flex items-center gap-2"><Check className="h-4 w-4 text-success" /> API access</li>
                       </ul>
                       <Button

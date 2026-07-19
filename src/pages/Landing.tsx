@@ -313,7 +313,7 @@ const Landing: React.FC = () => {
                   <span className="text-muted-foreground font-medium">/ month</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Everything in Free', 'Up to 50 users', 'Unlimited expenses', 'Analytics dashboard', 'Tally & CSV export', 'Priority support'].map((item, i) => (
+                  {['Everything in Free', 'Unlimited users', 'Unlimited expenses', 'Analytics dashboard', 'Priority support'].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-foreground font-medium">
                       <CheckCircle className="w-5 h-5 text-primary shrink-0" /> {item}
                     </li>
@@ -331,7 +331,7 @@ const Landing: React.FC = () => {
                   <span className="text-4xl font-extrabold text-foreground">Custom</span>
                 </div>
                 <ul className="space-y-4 mb-8 flex-1">
-                  {['Everything in Pro', 'Unlimited users', 'API access', 'Dedicated account manager', 'Custom integrations', 'SLA'].map((item, i) => (
+                  {['Everything in Pro', 'Unlimited users', 'Tally & CSV export', 'API access', 'Dedicated account manager', 'Custom integrations', 'SLA'].map((item, i) => (
                     <li key={i} className="flex items-center gap-3 text-foreground font-medium">
                       <CheckCircle className="w-5 h-5 text-primary shrink-0" /> {item}
                     </li>

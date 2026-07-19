@@ -106,6 +106,12 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ open, onClose, country }) =
                     <TableCell className="text-center"><Check className="h-4 w-4 mx-auto text-success" /></TableCell>
                   </TableRow>
                   <TableRow>
+                    <TableCell className="font-medium">Tally & CSV export</TableCell>
+                    <TableCell className="text-center"><X className="h-4 w-4 mx-auto text-muted-foreground" /></TableCell>
+                    <TableCell className="text-center bg-primary/5"><X className="h-4 w-4 mx-auto text-muted-foreground" /></TableCell>
+                    <TableCell className="text-center"><Check className="h-4 w-4 mx-auto text-success" /></TableCell>
+                  </TableRow>
+                  <TableRow>
                     <TableCell className="font-medium">API access</TableCell>
                     <TableCell className="text-center"><X className="h-4 w-4 mx-auto text-muted-foreground" /></TableCell>
                     <TableCell className="text-center bg-primary/5"><Check className="h-4 w-4 mx-auto text-success" /></TableCell>
