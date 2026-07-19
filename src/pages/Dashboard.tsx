@@ -344,10 +344,12 @@ const Dashboard: React.FC = () => {
               {isAdmin && (
                 <div className="flex items-center justify-between mt-10 mb-4">
                   <h2 className="text-xl font-bold">Analytics</h2>
-                  <Button variant="outline" onClick={exportCSV}>
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
+                  {canAccess('export') && (
+                    <Button variant="outline" onClick={exportCSV}>
+                      <Download className="h-4 w-4 mr-2" />
+                      Export CSV
+                    </Button>
+                  )}
                 </div>
               )}
 

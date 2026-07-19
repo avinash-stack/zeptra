@@ -11,6 +11,7 @@ import { Shield, Download, ChevronLeft, ChevronRight, Eye, Loader2 } from 'lucid
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { logExport } from '@/lib/auditLogger';
+import { usePlanLimit } from '@/hooks/usePlanLimit';
 import type { AuditLog as AuditLogEntry } from '@/types/database';
 
 const PAGE_SIZE = 50;
@@ -30,6 +31,7 @@ const ACTION_BADGE: Record<string, { variant: 'default' | 'secondary' | 'destruc
 
 const AuditLog: React.FC = () => {
   const { user, organization } = useAuth();
+  const { canAccess } = usePlanLimit();
 
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -151,10 +153,12 @@ const AuditLog: React.FC = () => {
 
             <div className="flex-1" />
 
-            <Button variant="outline" onClick={handleExportCSV}>
-              <Download className="mr-2 h-4 w-4" />
-              Export CSV
-            </Button>
+            {canAccess('export') && (
+              <Button variant="outline" onClick={handleExportCSV}>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+            )}
           </div>
         </CardHeader>
 
