@@ -233,7 +233,10 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT is_active FROM public.users WHERE id = _user_id
+  SELECT COALESCE(
+    (SELECT is_active FROM public.users WHERE id = _user_id),
+    false
+  )
 $$;
 
 -- ============================================================
@@ -261,7 +264,10 @@ ALTER TABLE public.exports_log ENABLE ROW LEVEL SECURITY;
 -- Organizations: members can read, admin can update
 CREATE POLICY "Members can view own org" ON public.organizations
   FOR SELECT TO authenticated
-  USING (id = public.user_org_id(auth.uid()));
+  USING (
+    id = public.user_org_id(auth.uid())
+    AND public.is_active_user(auth.uid())
+  );
 
 CREATE POLICY "Admin can update own org" ON public.organizations
   FOR UPDATE TO authenticated
@@ -277,7 +283,10 @@ CREATE POLICY "bootstrap_insert" ON public.organizations FOR INSERT TO authentic
 -- Org currencies: org members can view, admin can manage
 CREATE POLICY "Members can view currencies" ON public.org_currencies
   FOR SELECT TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()));
+  USING (
+    org_id = public.user_org_id(auth.uid())
+    AND public.is_active_user(auth.uid())
+  );
 
 CREATE POLICY "Admin can manage currencies" ON public.org_currencies
   FOR ALL TO authenticated
@@ -287,7 +296,13 @@ CREATE POLICY "Admin can manage currencies" ON public.org_currencies
 -- Profiles: org members can read, self can update, admin/hr can manage
 CREATE POLICY "Users can view org users" ON public.users
   FOR SELECT TO authenticated
-  USING (org_id = public.user_org_id(auth.uid()) OR id = auth.uid());
+  USING (
+    id = auth.uid()
+    OR (
+      public.is_active_user(auth.uid())
+      AND org_id = public.user_org_id(auth.uid())
+    )
+  );
 
 CREATE POLICY "Users can update own profile" ON public.users
   FOR UPDATE TO authenticated
@@ -309,8 +324,11 @@ CREATE POLICY "admin_hr_update" ON public.users FOR UPDATE TO authenticated
 DROP POLICY IF EXISTS "Users can view roles" ON public.user_roles;
 DROP POLICY IF EXISTS "Admin/HR can manage roles" ON public.user_roles;
 CREATE POLICY "org_select" ON public.user_roles FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM public.users
-    WHERE id = user_id AND org_id = public.user_org_id(auth.uid())));
+  USING (
+    public.is_active_user(auth.uid())
+    AND EXISTS (SELECT 1 FROM public.users
+      WHERE id = user_id AND org_id = public.user_org_id(auth.uid()))
+  );
 CREATE POLICY "admin_hr_all" ON public.user_roles FOR ALL TO authenticated
   USING (EXISTS (SELECT 1 FROM public.users
     WHERE id = user_id AND org_id = public.user_org_id(auth.uid()))
@@ -323,8 +341,11 @@ CREATE POLICY "admin_hr_all" ON public.user_roles FOR ALL TO authenticated
 CREATE POLICY "Members can view active categories" ON public.expense_categories
   FOR SELECT TO authenticated
   USING (
-    (org_id = public.user_org_id(auth.uid()) AND is_active = true)
-    OR (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
+    public.is_active_user(auth.uid())
+    AND (
+      (org_id = public.user_org_id(auth.uid()) AND is_active = true)
+      OR (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(), 'admin'))
+    )
   );
 
 CREATE POLICY "Admin can manage categories" ON public.expense_categories
@@ -1364,21 +1385,24 @@ AS $$
   SELECT id FROM public.users WHERE org_id = _org_id;
 $$;
 
--- Drop and recreate expense SELECT policy to include org isolation
+-- Drop and recreate expense SELECT policy to include org isolation + active user check
 DROP POLICY IF EXISTS "Employee sees own expenses" ON public.expenses;
 CREATE POLICY "User sees org-scoped expenses" ON public.expenses
   FOR SELECT TO authenticated
   USING (
-    -- Own expenses
-    user_id = auth.uid()
-    -- Or assigned approver
-    OR current_approver_id = auth.uid()
-    -- Or manager of submitter (existing helper)
-    OR public.is_manager_of(auth.uid(), user_id)
-    -- Or admin/finance, but ONLY within same org
-    OR (
-      public.has_any_role(auth.uid(), ARRAY['admin', 'finance'])
-      AND user_id IN (SELECT public.org_user_ids(public.user_org_id(auth.uid())))
+    public.is_active_user(auth.uid())
+    AND (
+      -- Own expenses
+      user_id = auth.uid()
+      -- Or assigned approver
+      OR current_approver_id = auth.uid()
+      -- Or manager of submitter (existing helper)
+      OR public.is_manager_of(auth.uid(), user_id)
+      -- Or admin/finance, but ONLY within same org
+      OR (
+        public.has_any_role(auth.uid(), ARRAY['admin', 'finance'])
+        AND user_id IN (SELECT public.org_user_ids(public.user_org_id(auth.uid())))
+      )
     )
   );
 
@@ -1392,12 +1416,13 @@ CREATE POLICY "org_insert" ON public.exports_log FOR INSERT TO authenticated
 CREATE POLICY "admin_select" ON public.exports_log FOR SELECT TO authenticated
   USING (org_id = public.user_org_id(auth.uid()) AND public.has_role(auth.uid(),'admin'));
 
--- Approval history: only see history for expenses you can see
+-- Approval history: only see history for expenses you can see + active user check
 DROP POLICY IF EXISTS "View approval history" ON public.approval_history;
 CREATE POLICY "View org approval history" ON public.approval_history
   FOR SELECT TO authenticated
   USING (
-    expense_id IN (
+    public.is_active_user(auth.uid())
+    AND expense_id IN (
       SELECT id FROM public.expenses
       WHERE user_id IN (SELECT public.org_user_ids(public.user_org_id(auth.uid())))
         OR user_id = auth.uid()
