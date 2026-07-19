@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { isSupabaseConfigured } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -72,7 +73,15 @@ const Login: React.FC = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="password">Password</Label>
+                <Link
+                  to="/forgot-password"
+                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <Input
                 id="password"
                 type="password"
@@ -91,6 +100,16 @@ const Login: React.FC = () => {
               Sign In
             </Button>
           </form>
+
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            Don't have an account?{' '}
+            <Link
+              to="/create-organization"
+              className="text-primary hover:underline font-medium transition-colors"
+            >
+              Create your organisation
+            </Link>
+          </p>
         </CardContent>
       </Card>
     </div>

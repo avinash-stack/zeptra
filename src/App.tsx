@@ -24,6 +24,8 @@ const AccountSettings = lazy(() => import("@/pages/AccountSettings"));
 const Help = lazy(() => import("@/pages/Help"));
 const ProfilePage = lazy(() => import("@/pages/Profile"));
 const AuditLog = lazy(() => import("@/pages/AuditLog"));
+const ForgotPassword = lazy(() => import("@/pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -122,6 +124,8 @@ const App = () => (
                   <>
                     <Route path="/create-organization" element={<OrganizationProfile />} />
                     <Route path="/login" element={<AuthRoute><Login /></AuthRoute>} />
+                    <Route path="/forgot-password" element={<AuthRoute><ForgotPassword /></AuthRoute>} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/set-password" element={<SetPassword />} />
                     <Route path="/app" element={<ProtectedRoute deferProfile><AppLayout /></ProtectedRoute>}>
                       <Route index element={<Dashboard />} />
